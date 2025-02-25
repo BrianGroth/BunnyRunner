@@ -1,0 +1,14 @@
+/* Remove any default spacing and hide overflow */
+body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #000;
+  }
+  
+  /* The canvas fills the window */
+  canvas {
+    display: block;
+    background: #87ceeb; /* a sky-blue base */
+  }
+  
