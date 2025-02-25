@@ -1,9 +1,15 @@
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
-// Set canvas dimensions
-canvas.width = 800;
-canvas.height = 600;
+// Resize the canvas to fill the window and reposition the bunny
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  // Reposition bunny near the bottom center (leave room for the control bar)
+  bunny.x = canvas.width / 2 - bunny.width / 2;
+  bunny.y = canvas.height - bunny.height - 100;
+}
+window.addEventListener("resize", resizeCanvas);
 
 // Timing variables for game loop
 let lastTime = 0;
@@ -27,19 +33,66 @@ let obstacles = [];
 let obstacleTimer = 0;
 let obstacleInterval = 1500; // spawn every 1.5 seconds
 
-// Load images (place your own bunny.png and rock.png in the assets/ folder)
+// Load images (ensure bunny.png and rock.png are in your folder)
 const bunnyImg = new Image();
 bunnyImg.src = "bunny.png";
 const rockImg = new Image();
 rockImg.src = "rock.png";
 
-// Player input handling
+// Player input handling via arrow keys
 const keys = {};
 window.addEventListener("keydown", (e) => {
   keys[e.key] = true;
 });
 window.addEventListener("keyup", (e) => {
   keys[e.key] = false;
+});
+
+// Control input variable for touch/mouse control (-1 to 1)
+let controlInput = 0;
+const controlContainer = document.getElementById("controlContainer");
+
+function updateControlInput(clientX) {
+  const rect = controlContainer.getBoundingClientRect();
+  const centerX = rect.left + rect.width / 2;
+  let diff = clientX - centerX;
+  // Normalize difference to range [-1, 1]
+  controlInput = Math.max(-1, Math.min(1, diff / (rect.width / 2)));
+  // Update the control knob's position visually
+  const controlKnob = document.getElementById("controlKnob");
+  controlKnob.style.left = (rect.width / 2 + diff - controlKnob.offsetWidth / 2) + "px";
+}
+
+// Touch events for mobile devices
+controlContainer.addEventListener("touchstart", function(e) {
+  e.preventDefault();
+  updateControlInput(e.touches[0].clientX);
+});
+controlContainer.addEventListener("touchmove", function(e) {
+  e.preventDefault();
+  updateControlInput(e.touches[0].clientX);
+});
+controlContainer.addEventListener("touchend", function(e) {
+  e.preventDefault();
+  controlInput = 0;
+  document.getElementById("controlKnob").style.left = "50%";
+});
+
+// Mouse events for desktop (dragging the control)
+controlContainer.addEventListener("mousedown", function(e) {
+  e.preventDefault();
+  updateControlInput(e.clientX);
+  const onMouseMove = function(e) {
+    updateControlInput(e.clientX);
+  };
+  const onMouseUp = function(e) {
+    controlInput = 0;
+    document.getElementById("controlKnob").style.left = "50%";
+    window.removeEventListener("mousemove", onMouseMove);
+    window.removeEventListener("mouseup", onMouseUp);
+  };
+  window.addEventListener("mousemove", onMouseMove);
+  window.addEventListener("mouseup", onMouseUp);
 });
 
 // Function to spawn a rock obstacle at a random horizontal position
@@ -56,7 +109,6 @@ function spawnObstacle() {
 
 // Update game objects
 function update(deltaTime) {
-  // Update bunny’s bounce (using a sine wave for a simple bounce effect)
   bunny.bounceTime += deltaTime;
   const bounceOffset = Math.sin(bunny.bounceTime / 200) * 5;
 
@@ -74,12 +126,15 @@ function update(deltaTime) {
     bunny.y += bunny.speed;
   }
 
-  // Move obstacles downward to simulate forward motion
+  // Use control input for horizontal movement if no arrow key is pressed
+  if (!keys["ArrowLeft"] && !keys["ArrowRight"] && controlInput !== 0) {
+    bunny.x += bunny.speed * controlInput;
+  }
+
+  // Move obstacles downward
   obstacles.forEach((obstacle) => {
     obstacle.y += obstacle.speed;
   });
-
-  // Remove obstacles that have moved off screen
   obstacles = obstacles.filter((obstacle) => obstacle.y < canvas.height + obstacle.height);
 
   // Spawn new obstacles periodically
@@ -92,7 +147,7 @@ function update(deltaTime) {
   // Increase score (or distance traveled)
   score += deltaTime * 0.01;
 
-  // Collision detection: if bunny overlaps a rock, adjust its position to simulate getting stuck
+  // Collision detection: adjust bunny's position if it overlaps a rock
   obstacles.forEach((obstacle) => {
     if (
       bunny.x < obstacle.x + obstacle.width &&
@@ -100,8 +155,6 @@ function update(deltaTime) {
       bunny.y < obstacle.y + obstacle.height &&
       bunny.y + bunny.height > obstacle.y
     ) {
-      // Simple collision response:
-      // If moving left/right, push bunny away from the rock.
       if (keys["ArrowLeft"]) bunny.x += bunny.speed;
       if (keys["ArrowRight"]) bunny.x -= bunny.speed;
     }
@@ -112,8 +165,8 @@ function update(deltaTime) {
 function draw() {
   // Draw a gradient background representing forest (top) to field (bottom)
   let grd = ctx.createLinearGradient(0, 0, 0, canvas.height);
-  grd.addColorStop(0, "#228B22"); // forest green
-  grd.addColorStop(1, "#7CFC00"); // lawn green
+  grd.addColorStop(0, "#228B22");
+  grd.addColorStop(1, "#7CFC00");
   ctx.fillStyle = grd;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -129,10 +182,10 @@ function draw() {
 
   // Draw the bunny with the bounce offset
   if (bunnyImg.complete) {
-    ctx.drawImage(bunnyImg, bunny.x, bunny.y + Math.sin(bunny.bounceTime / 200) * 5, bunny.width, bunny.height);
+    ctx.drawImage(bunnyImg, bunny.x, bunny.y + bounceOffset, bunny.width, bunny.height);
   } else {
     ctx.fillStyle = "#FFFFFF";
-    ctx.fillRect(bunny.x, bunny.y + Math.sin(bunny.bounceTime / 200) * 5, bunny.width, bunny.height);
+    ctx.fillRect(bunny.x, bunny.y + bounceOffset, bunny.width, bunny.height);
   }
 
   // Draw the score
@@ -152,5 +205,6 @@ function gameLoop(timestamp) {
   requestAnimationFrame(gameLoop);
 }
 
-// Start the game loop
+// Initialize canvas size and start the game loop
+resizeCanvas();
 requestAnimationFrame(gameLoop);
