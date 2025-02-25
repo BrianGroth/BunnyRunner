@@ -49,10 +49,13 @@ const totalImages = 5;
 [bunnyImg, rockImg, friendImg, treeImg, carrotImg].forEach(img => {
   img.onload = () => {
     imagesLoaded++;
+    console.log(img.src + " loaded");
     if (imagesLoaded === totalImages) {
+      console.log("All images loaded, starting game loop");
       requestAnimationFrame(gameLoop);
     }
   };
+  img.onerror = () => console.error("Failed to load " + img.src);
 });
 
 document.getElementById("leftBtn").addEventListener("click", () => {
@@ -81,17 +84,6 @@ window.addEventListener("keydown", (e) => {
 
 function update(dt) {
   bunny.x += (bunny.targetX - bunny.x) * bunny.laneSwitchSpeed;
-
-  objects.forEach(obj => {
-    obj.y += obj.speed;
-  });
-  objects = objects.filter(obj => obj.y < canvasHeight + obj.height);
-
-  objectTimer += dt;
-  if (objectTimer > objectInterval) {
-    spawnObject();
-    objectTimer = 0;
-  }
 }
 
 function draw() {
@@ -101,15 +93,12 @@ function draw() {
   grd.addColorStop(1, "#7cfc00");
   ctx.fillStyle = grd;
   ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-
-  objects.forEach(obj => {
-    ctx.drawImage(eval(obj.type + "Img"), obj.x, obj.y, obj.width, obj.height);
-  });
-
+  console.log("Drawing bunny at", bunny.x, bunny.y);
   ctx.drawImage(bunnyImg, bunny.x, bunny.y, bunny.width, bunny.height);
 }
 
 function gameLoop(timestamp) {
+  console.log("Game loop running");
   update(16);
   draw();
   requestAnimationFrame(gameLoop);
