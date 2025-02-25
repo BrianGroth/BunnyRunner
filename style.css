@@ -1,29 +1,34 @@
-/* Remove any default spacing and hide overflow */
-body {
+/* Ensure full height and remove default margins */
+html, body {
   margin: 0;
   padding: 0;
+  height: 100%;
   overflow: hidden;
   background: #000;
 }
 
-/* The canvas fills the window */
+/* Full-screen canvas positioned at top-left */
 canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
   display: block;
-  background: #87ceeb; /* a sky-blue base */
+  background: #87ceeb; /* sky-blue base */
 }
 
-/* Control container fixed at the bottom */
+/* Control container fixed at the bottom with a semi-transparent background */
 #controlContainer {
-  position: absolute;
+  position: fixed;
   bottom: 0;
   left: 0;
   width: 100%;
-  height: 100px;
+  height: 120px;
   background: rgba(0, 0, 0, 0.3);
   touch-action: none;
+  z-index: 10;
 }
 
-/* Control knob that follows the drag */
+/* The control knob that follows your drag */
 #controlKnob {
   position: absolute;
   top: 50%;
