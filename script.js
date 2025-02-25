@@ -20,6 +20,7 @@ function resizeCanvas() {
     lanePositions.push(((i + 1) * canvasWidth) / (numLanes + 1));
   }
   bunny.targetX = lanePositions[bunny.currentLane] - bunny.width / 2;
+  console.log("Canvas resized:", canvasWidth, canvasHeight);
 }
 window.addEventListener("resize", resizeCanvas);
 resizeCanvas();
@@ -57,6 +58,20 @@ const rockImg    = new Image(); rockImg.src    = "rock.png";
 const friendImg  = new Image(); friendImg.src  = "friend.png";
 const treeImg    = new Image(); treeImg.src    = "tree.png";
 const carrotImg  = new Image(); carrotImg.src  = "carrot.png";
+
+// Ensure images are loaded before drawing
+let imagesLoaded = 0;
+const totalImages = 5;
+
+[bunnyImg, rockImg, friendImg, treeImg, carrotImg].forEach(img => {
+  img.onload = () => {
+    imagesLoaded++;
+    if (imagesLoaded === totalImages) {
+      console.log("All images loaded");
+      requestAnimationFrame(gameLoop);
+    }
+  };
+});
 
 // ----- Input Handling: Touch/Swipe ----- //
 let touchStartX = null;
@@ -283,4 +298,8 @@ function gameLoop(timestamp) {
 
   requestAnimationFrame(gameLoop);
 }
-requestAnimationFrame(gameLoop);
+
+// Start the game loop only after all images are loaded
+if (imagesLoaded === totalImages) {
+  requestAnimationFrame(gameLoop);
+}
