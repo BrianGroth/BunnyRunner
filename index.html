@@ -2,13 +2,119 @@
 <html>
   <head>
     <meta charset="UTF-8" />
-    <!-- Ensure full-screen responsiveness on mobile -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Bunny Runner - Endless Runner Game</title>
-    <link rel="stylesheet" href="style.css" />
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #000;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+      }
+      canvas {
+        display: block;
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+      }
+      #mobileControls {
+        position: absolute;
+        bottom: 10px;
+        width: 100%;
+        display: flex;
+        justify-content: center;
+      }
+      #mobileControls button {
+        width: 50px;
+        height: 50px;
+        font-size: 24px;
+        margin: 5px;
+        border: none;
+        background: rgba(255, 255, 255, 0.8);
+        border-radius: 50%;
+        cursor: pointer;
+      }
+    </style>
   </head>
   <body>
     <canvas id="gameCanvas"></canvas>
-    <script src="script.js"></script>
+    <div id="mobileControls">
+      <button id="leftBtn">⬅</button>
+      <button id="rightBtn">➡</button>
+    </div>
+    <script>
+      const canvas = document.getElementById("gameCanvas");
+      const ctx = canvas.getContext("2d");
+      let canvasWidth = window.innerWidth;
+      let canvasHeight = window.innerHeight;
+      canvas.width = canvasWidth;
+      canvas.height = canvasHeight;
+
+      const bunnyImg = new Image();
+      bunnyImg.src = "bunny.png";
+
+      let bunny = {
+        x: canvasWidth / 2 - 40,
+        y: canvasHeight * 0.8,
+        width: 80,
+        height: 80,
+      };
+
+      let objects = [];
+      let objectTypes = ["rock.png", "carrot.png", "tree.png", "friend.png"];
+
+      function spawnObject() {
+        let objType = objectTypes[Math.floor(Math.random() * objectTypes.length)];
+        let objImg = new Image();
+        objImg.src = objType;
+        objects.push({
+          x: Math.random() * canvasWidth,
+          y: -80,
+          width: 80,
+          height: 80,
+          img: objImg,
+          speed: 4 + Math.random() * 2
+        });
+      }
+      
+      function draw() {
+        ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+        let grd = ctx.createLinearGradient(0, 0, 0, canvasHeight);
+        grd.addColorStop(0, "#87ceeb");
+        grd.addColorStop(1, "#7cfc00");
+        ctx.fillStyle = grd;
+        ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+        
+        objects.forEach(obj => {
+          ctx.drawImage(obj.img, obj.x, obj.y, obj.width, obj.height);
+          obj.y += obj.speed;
+        });
+        
+        ctx.drawImage(bunnyImg, bunny.x, bunny.y, bunny.width, bunny.height);
+      }
+      
+      function update() {
+        draw();
+        requestAnimationFrame(update);
+      }
+      
+      document.getElementById("leftBtn").addEventListener("click", () => {
+        bunny.x -= 100;
+      });
+      
+      document.getElementById("rightBtn").addEventListener("click", () => {
+        bunny.x += 100;
+      });
+
+      setInterval(spawnObject, 2000);
+      update();
+    </script>
   </body>
 </html>
