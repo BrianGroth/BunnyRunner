@@ -1,25 +1,24 @@
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
-// Set up lane-based play (3 lanes)
+// ----- Global Settings & Variables ----- //
 let numLanes = 3;
 let lanePositions = [];
 let canvasWidth = window.innerWidth;
 let canvasHeight = window.innerHeight;
 
-// Resize canvas to always fill the window and recalc lanes
+// Resize the canvas to fill the window and recalc lane positions
 function resizeCanvas() {
   canvasWidth = window.innerWidth;
   canvasHeight = window.innerHeight;
   canvas.width = canvasWidth;
   canvas.height = canvasHeight;
   
-  // Compute lane centers. For three lanes, use centers at 1/4, 1/2, and 3/4 of the width.
   lanePositions = [];
   for (let i = 0; i < numLanes; i++) {
+    // For 3 lanes, centers at 1/4, 1/2, 3/4 of the screen width
     lanePositions.push(((i + 1) * canvasWidth) / (numLanes + 1));
   }
-  // Update bunny target position based on current lane
   bunny.targetX = lanePositions[bunny.currentLane] - bunny.width / 2;
 }
 window.addEventListener("resize", resizeCanvas);
@@ -31,40 +30,39 @@ let deltaTime = 0;
 let score = 0;
 let ouchTimer = 0;
 
-// Bunny object (lane-based)
+// ----- Bunny Object (Lane-Based) ----- //
 let bunny = {
-  currentLane: 1, // lanes are indexed 0 (left), 1 (center), 2 (right)
+  currentLane: 1,  // lanes: 0 = left, 1 = center, 2 = right
   x: 0,
   y: 0,
   targetX: 0,
   width: 80,  // drawn at 80x80 (from a 100x100 image)
   height: 80,
-  laneSwitchSpeed: 0.2, // interpolation factor for smooth lane changes
+  laneSwitchSpeed: 0.2,  // smoothing factor for lane switching
   bounceTime: 0
 };
-// Position bunny near the bottom of the screen (about 80% down)
+// Place the bunny near the bottom of the screen (about 80% down)
 bunny.y = canvasHeight * 0.8;
 bunny.x = lanePositions[bunny.currentLane] - bunny.width / 2;
 bunny.targetX = bunny.x;
 
-// Falling objects array
+// ----- Falling Objects Array ----- //
 let objects = [];
 let objectTimer = 0;
 let objectInterval = 1500; // spawn a new object every 1.5 seconds
 
-// Load images (ensure these PNG files are in your project folder)
-const bunnyImg = new Image(); bunnyImg.src = "bunny.png";
-const rockImg = new Image(); rockImg.src = "rock.png";
-const friendImg = new Image(); friendImg.src = "friend.png";
-const treeImg = new Image(); treeImg.src = "tree.png";
-const carrotImg = new Image(); carrotImg.src = "carrot.png";
+// ----- Load Images ----- //
+const bunnyImg   = new Image(); bunnyImg.src   = "bunny.png";
+const rockImg    = new Image(); rockImg.src    = "rock.png";
+const friendImg  = new Image(); friendImg.src  = "friend.png";
+const treeImg    = new Image(); treeImg.src    = "tree.png";
+const carrotImg  = new Image(); carrotImg.src  = "carrot.png";
 
-// Touch swipe detection variables
+// ----- Input Handling: Touch/Swipe ----- //
 let touchStartX = null;
 let touchEndX = null;
 const swipeThreshold = 30; // minimum swipe distance in pixels
 
-// Listen for touch events on the canvas for swipe controls
 canvas.addEventListener("touchstart", function(e) {
   touchStartX = e.changedTouches[0].clientX;
 }, false);
@@ -79,10 +77,10 @@ function handleSwipe() {
   let diffX = touchEndX - touchStartX;
   if (Math.abs(diffX) > swipeThreshold) {
     if (diffX > 0 && bunny.currentLane < numLanes - 1) {
-      // swipe right
+      // Swipe right: move to the next lane on the right
       bunny.currentLane++;
     } else if (diffX < 0 && bunny.currentLane > 0) {
-      // swipe left
+      // Swipe left: move to the next lane on the left
       bunny.currentLane--;
     }
     bunny.targetX = lanePositions[bunny.currentLane] - bunny.width / 2;
@@ -91,7 +89,7 @@ function handleSwipe() {
   touchEndX = null;
 }
 
-// Arrow key controls for desktop
+// ----- Input Handling: Arrow Keys & Mouse (Desktop) ----- //
 window.addEventListener("keydown", function(e) {
   if (e.key === "ArrowLeft" && bunny.currentLane > 0) {
     bunny.currentLane--;
@@ -102,7 +100,6 @@ window.addEventListener("keydown", function(e) {
   }
 });
 
-// Optional: Mouse swipe support for desktop
 let mouseDownX = null;
 canvas.addEventListener("mousedown", function(e) {
   mouseDownX = e.clientX;
@@ -121,7 +118,7 @@ canvas.addEventListener("mouseup", function(e) {
   mouseDownX = null;
 });
 
-// Function to spawn a falling object in a random lane
+// ----- Spawn Falling Objects ----- //
 function spawnObject() {
   const types = ["rock", "tree", "friend", "carrot"];
   let type = types[Math.floor(Math.random() * types.length)];
@@ -130,12 +127,12 @@ function spawnObject() {
     type: type,
     lane: lane,
     x: lanePositions[lane] - 40, // default centering for an 80px-wide object
-    y: -100, // start off-screen
+    y: -100,  // start off-screen
     width: 80,
     height: 80,
     speed: 4 + Math.random() * 2
   };
-  // Adjust sizes and centering based on object type
+  // Adjust sizes and centering based on type
   if (type === "tree") {
     obj.width = 120;
     obj.height = 120;
@@ -148,17 +145,17 @@ function spawnObject() {
   objects.push(obj);
 }
 
-// Update game state
+// ----- Update Game State ----- //
 function update(dt) {
   bunny.bounceTime += dt;
-  // Smoothly interpolate bunny.x toward its target lane position
+  // Smoothly move the bunny toward the target lane position
   bunny.x += (bunny.targetX - bunny.x) * bunny.laneSwitchSpeed;
 
   // Update falling objects
   objects.forEach(obj => {
     obj.y += obj.speed;
   });
-  // Remove objects that have fallen off the screen
+  // Remove objects that have fallen off-screen
   objects = objects.filter(obj => obj.y < canvasHeight + obj.height);
 
   // Spawn new objects periodically
@@ -168,18 +165,18 @@ function update(dt) {
     objectTimer = 0;
   }
 
-  // Collision detection: check if an object in the same lane collides vertically with the bunny
+  // Collision detection: if an object in the same lane overlaps vertically with the bunny
   let newObjects = [];
   objects.forEach(obj => {
     if (obj.lane === bunny.currentLane &&
         obj.y + obj.height >= bunny.y &&
         obj.y <= bunny.y + bunny.height) {
-      // Collision occurred – update score and possibly trigger “OUCH!”
+      // Collision occurred – adjust score based on object type
       if (obj.type === "friend" || obj.type === "carrot") {
         score += 1;
       } else if (obj.type === "rock" || obj.type === "tree") {
         score -= 1;
-        ouchTimer = 1000; // display "OUCH!" for 1 second
+        ouchTimer = 1000; // show "OUCH!" for 1 second
       }
     } else {
       newObjects.push(obj);
@@ -192,17 +189,21 @@ function update(dt) {
     if (ouchTimer < 0) ouchTimer = 0;
   }
 
-  // Increase score over time for distance traveled
+  // Increase score gradually (for distance traveled)
   score += dt * 0.005;
 }
 
-// Draw game elements
+// ----- Draw Everything ----- //
 function draw() {
-  // Draw background (a simple light blue sky)
-  ctx.fillStyle = "#87ceeb";
+  // Draw a gradient background: sky at the top, grass at the bottom
+  let grd = ctx.createLinearGradient(0, 0, 0, canvasHeight);
+  grd.addColorStop(0, "#87ceeb");    // sky blue
+  grd.addColorStop(0.7, "#87ceeb");
+  grd.addColorStop(1, "#7cfc00");      // lawn green
+  ctx.fillStyle = grd;
   ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
-  // (Optional) Draw lane dividers for visual clarity
+  // (Optional) Draw lane dividers for clarity (uncomment if desired)
   // ctx.strokeStyle = "rgba(255,255,255,0.3)";
   // lanePositions.forEach(pos => {
   //   ctx.beginPath();
@@ -211,7 +212,7 @@ function draw() {
   //   ctx.stroke();
   // });
 
-  // Draw falling objects based on their type
+  // Draw falling objects
   objects.forEach(obj => {
     switch (obj.type) {
       case "rock":
@@ -249,7 +250,7 @@ function draw() {
     }
   });
 
-  // Draw the bunny with a bouncing effect
+  // Draw the bunny with a bounce effect
   const bounce = Math.sin(bunny.bounceTime / 200) * 5;
   if (bunnyImg.complete) {
     ctx.drawImage(bunnyImg, bunny.x, bunny.y + bounce, bunny.width, bunny.height);
@@ -258,12 +259,12 @@ function draw() {
     ctx.fillRect(bunny.x, bunny.y + bounce, bunny.width, bunny.height);
   }
 
-  // Draw the score in the top left corner
+  // Draw the score
   ctx.fillStyle = "#000";
   ctx.font = "24px Arial";
   ctx.fillText("Score: " + Math.floor(score), 10, 30);
 
-  // Draw "OUCH!" text next to the bunny if a negative collision occurred
+  // Draw "OUCH!" next to the bunny if a negative collision occurred
   if (ouchTimer > 0) {
     ctx.fillStyle = "#ff0000";
     ctx.font = "20px Arial";
@@ -271,7 +272,7 @@ function draw() {
   }
 }
 
-// Main game loop
+// ----- Main Game Loop ----- //
 function gameLoop(timestamp) {
   if (!lastTime) lastTime = timestamp;
   deltaTime = timestamp - lastTime;

@@ -1,4 +1,4 @@
-/* Ensure full height, no margins, and a dark background */
+/* Ensure the document fills the screen */
 html, body {
   margin: 0;
   padding: 0;
@@ -7,11 +7,11 @@ html, body {
   background: #000;
 }
 
-/* The canvas covers the entire screen */
+/* Full-screen canvas */
 canvas {
   display: block;
   position: absolute;
   top: 0;
   left: 0;
-  background: #87ceeb; /* light blue background */
+  background: #87ceeb; /* fallback sky-blue */
 }
