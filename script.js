@@ -29,9 +29,9 @@ let obstacleInterval = 1500; // spawn every 1.5 seconds
 
 // Load images (place your own bunny.png and rock.png in the assets/ folder)
 const bunnyImg = new Image();
-bunnyImg.src = "assets/bunny.png";
+bunnyImg.src = "bunny.png";
 const rockImg = new Image();
-rockImg.src = "assets/rock.png";
+rockImg.src = "rock.png";
 
 // Player input handling
 const keys = {};
