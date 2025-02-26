@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Endless Runner: Rabbit Emoji Adventure</title>
+  <title>Endless Runner: Rabbit Emoji Adventure Plus</title>
   <style>
     body, html {
       margin: 0;
@@ -11,23 +11,51 @@
       overflow: hidden;
       background: #eef;
     }
+    /* Both canvases overlay each other */
     canvas {
-      display: block;
-      background: #ccf;
+      position: absolute;
+      top: 0;
+      left: 0;
     }
   </style>
 </head>
 <body>
+  <!-- Background canvas for sky, ground, and clouds -->
+  <canvas id="bgCanvas"></canvas>
+  <!-- Foreground canvas for game objects -->
   <canvas id="gameCanvas"></canvas>
-  <script>
-    // Set up canvas
-    const canvas = document.getElementById("gameCanvas");
-    const ctx = canvas.getContext("2d");
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
 
-    // Define ground and rabbit parameters
-    const groundY = canvas.height - 50;
+  <script>
+    // Get canvas elements and contexts.
+    const bgCanvas = document.getElementById("bgCanvas");
+    const bgCtx = bgCanvas.getContext("2d");
+    const gameCanvas = document.getElementById("gameCanvas");
+    const ctx = gameCanvas.getContext("2d");
+
+    // Game settings and state.
+    let initialScore = 10;
+    let score = initialScore;
+    let difficulty = 0;  // increases over time
+    let gameStarted = false;
+    let gameOver = false;
+    let spawnTimer = 0;
+    let outchTimer = 0;  // timer to display "outch" when hit
+
+    // Setup canvas sizes.
+    let groundY;
+    function resize() {
+      bgCanvas.width = window.innerWidth;
+      bgCanvas.height = window.innerHeight;
+      gameCanvas.width = window.innerWidth;
+      gameCanvas.height = window.innerHeight;
+      groundY = gameCanvas.height - 50;
+      rabbit.y = groundY - rabbit.size;
+      initClouds(); // reset clouds on resize
+    }
+    window.addEventListener("resize", resize);
+    resize();
+
+    // Define the rabbit character.
     const rabbitSize = 50;
     let rabbit = {
       x: 50,
@@ -38,12 +66,23 @@
       gravity: 0.5
     };
 
-    let score = 0;
-    let gameStarted = false;
-    let spawnTimer = 0;
-    let items = []; // array for fruits/vegetables (food) and obstacles
+    // Array for food and obstacle items.
+    let items = [];
 
-    // Spawn a new item (food or obstacle) at the right edge
+    // Cloud objects for a creative sky.
+    let clouds = [];
+    function initClouds() {
+      clouds = [];
+      for (let i = 0; i < 5; i++) {
+        let x = Math.random() * bgCanvas.width;
+        let y = Math.random() * (bgCanvas.height / 2);
+        let speed = 0.3 + Math.random() * 0.7;
+        clouds.push({ x, y, speed });
+      }
+    }
+    initClouds();
+
+    // Spawn a food or obstacle item.
     function spawnItem() {
       let type = Math.random() < 0.6 ? 'food' : 'obstacle';
       let emoji;
@@ -51,28 +90,39 @@
         const foods = ['🍎', '🍌', '🍇', '🍉', '🍓', '🍊', '🥕', '🥦'];
         emoji = foods[Math.floor(Math.random() * foods.length)];
       } else {
-        const obs = ['🌳', '🪨'];
-        emoji = obs[Math.floor(Math.random() * obs.length)];
+        const obstacles = ['🌳', '🪨'];
+        emoji = obstacles[Math.floor(Math.random() * obstacles.length)];
       }
       let y;
       if (type === 'food') {
-        // Spawn food at a random height above ground so you may need to jump.
+        // Food appears at a random height above ground.
         y = groundY - rabbitSize - Math.random() * 150;
         if (y < 0) y = 0;
       } else {
-        // Obstacles appear near the ground.
+        // Obstacles near the ground.
         y = groundY - 40;
       }
       let size = 40;
-      let speed = 5;
-      items.push({ type, emoji, x: canvas.width, y, size, speed });
+      let baseSpeed = 5;
+      // Increase speed as difficulty increases.
+      let speed = baseSpeed + difficulty;
+      items.push({ type, emoji, x: gameCanvas.width, y, size, speed });
     }
 
-    // Update game objects and check for collisions.
+    // Update game objects.
     function update() {
-      if (!gameStarted) return;
+      // If game over, halt game updates (except for "outch" timer).
+      if (gameOver) {
+        if (outchTimer > 0) outchTimer--;
+        return;
+      }
 
-      // Update the rabbit's vertical position using gravity.
+      // Increase difficulty gradually.
+      if (gameStarted) {
+        difficulty += 0.005;
+      }
+
+      // Update rabbit physics.
       rabbit.velocityY += rabbit.gravity;
       rabbit.y += rabbit.velocityY;
       if (rabbit.y > groundY - rabbit.size) {
@@ -80,12 +130,21 @@
         rabbit.velocityY = 0;
       }
 
-      // Move each item leftward and check for collision with the rabbit.
+      // Update clouds (move them slowly).
+      clouds.forEach(cloud => {
+        cloud.x -= cloud.speed;
+        if (cloud.x < -50) {
+          cloud.x = bgCanvas.width;
+          cloud.y = Math.random() * (bgCanvas.height / 2);
+        }
+      });
+
+      // Update items and check collisions.
       for (let i = items.length - 1; i >= 0; i--) {
         let item = items[i];
         item.x -= item.speed;
 
-        // Simple rectangle collision detection.
+        // Simple collision detection.
         if (
           item.x < rabbit.x + rabbit.size &&
           item.x + item.size > rabbit.x &&
@@ -96,86 +155,132 @@
             score += 1;
           } else {
             score -= 1;
+            outchTimer = 30; // show "outch" for 30 frames
           }
           items.splice(i, 1);
+          // End game if score is 0 or less.
+          if (score <= 0) {
+            score = 0;
+            gameOver = true;
+          }
         } else if (item.x + item.size < 0) {
-          // Remove items that have moved off screen.
           items.splice(i, 1);
         }
       }
 
-      // Periodically spawn new items.
+      // Adjust spawn interval based on difficulty.
+      let spawnInterval = Math.max(30, 90 - Math.floor(difficulty * 10));
       spawnTimer++;
-      if (spawnTimer > 90) {
+      if (spawnTimer > spawnInterval) {
         spawnItem();
         spawnTimer = 0;
       }
+
+      if (outchTimer > 0) outchTimer--;
     }
 
-    // Draw the game objects on the canvas.
-    function draw() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // Draw the creative background.
+    function drawBackground() {
+      bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
+      // Sky gradient.
+      let gradient = bgCtx.createLinearGradient(0, 0, 0, bgCanvas.height);
+      gradient.addColorStop(0, "#aee");
+      gradient.addColorStop(1, "#ccf");
+      bgCtx.fillStyle = gradient;
+      bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
+      // Draw clouds.
+      bgCtx.font = "30px sans-serif";
+      clouds.forEach(cloud => {
+        bgCtx.fillText("☁️", cloud.x, cloud.y);
+      });
+      // Ground.
+      bgCtx.fillStyle = "#654321";
+      bgCtx.fillRect(0, groundY, bgCanvas.width, bgCanvas.height - groundY);
+    }
 
-      // Draw the ground.
-      ctx.fillStyle = "#654321";
-      ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
-
+    // Draw game objects.
+    function drawGame() {
+      ctx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
       // Draw the rabbit.
       ctx.font = rabbit.size + "px sans-serif";
-      // (Add rabbit.size to y to position based on the text baseline.)
       ctx.fillText("🐰", rabbit.x, rabbit.y + rabbit.size);
-
-      // Draw all spawned items.
+      // Display items.
       items.forEach(item => {
         ctx.font = item.size + "px sans-serif";
         ctx.fillText(item.emoji, item.x, item.y + item.size);
       });
-
-      // Display the score.
+      // Show "outch" if needed.
+      if (outchTimer > 0) {
+        ctx.font = "20px sans-serif";
+        ctx.fillStyle = "red";
+        ctx.fillText("outch", rabbit.x, rabbit.y - 10);
+      }
+      // Display score.
       ctx.font = "24px sans-serif";
       ctx.fillStyle = "#000";
       ctx.fillText("Score: " + score, 10, 30);
 
-      // If the game hasn't started, display instructions.
-      if (!gameStarted) {
+      // If game hasn't started.
+      if (!gameStarted && !gameOver) {
         ctx.font = "30px sans-serif";
         ctx.fillStyle = "rgba(0,0,0,0.5)";
-        ctx.fillText("Tap to start and jump!", canvas.width / 2 - 120, canvas.height / 2);
+        ctx.fillText("Tap to start and jump!", gameCanvas.width / 2 - 150, gameCanvas.height / 2);
+      }
+      // If game over.
+      if (gameOver) {
+        ctx.font = "40px sans-serif";
+        ctx.fillStyle = "black";
+        ctx.fillText("Game Over", gameCanvas.width / 2 - 100, gameCanvas.height / 2 - 20);
+        ctx.font = "30px sans-serif";
+        ctx.fillText("Tap to Restart", gameCanvas.width / 2 - 100, gameCanvas.height / 2 + 20);
       }
     }
 
     // Main game loop.
     function gameLoop() {
       update();
-      draw();
+      drawBackground();
+      drawGame();
       requestAnimationFrame(gameLoop);
     }
     gameLoop();
 
-    // Control: tap (or click) to start the game and make the rabbit jump.
-    function jump() {
+    // Jump and start/restart control.
+    function jumpOrRestart() {
+      if (gameOver) {
+        restartGame();
+        return;
+      }
       if (!gameStarted) {
         gameStarted = true;
       }
-      // Only jump if the rabbit is on (or nearly on) the ground.
+      // Jump only if on the ground.
       if (rabbit.y >= groundY - rabbit.size - 1) {
         rabbit.velocityY = rabbit.jumpForce;
       }
     }
 
-    canvas.addEventListener("touchstart", function(e) {
-      e.preventDefault();
-      jump();
-    });
-    canvas.addEventListener("mousedown", function() {
-      jump();
-    });
+    // Restart the game by resetting variables.
+    function restartGame() {
+      score = initialScore;
+      difficulty = 0;
+      gameStarted = false;
+      gameOver = false;
+      spawnTimer = 0;
+      items = [];
+      rabbit.x = 50;
+      rabbit.y = groundY - rabbit.size;
+      rabbit.velocityY = 0;
+      outchTimer = 0;
+      initClouds();
+    }
 
-    // Optional: Adjust the canvas size if the window is resized.
-    window.addEventListener("resize", function() {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+    // Listen for touch or mouse events.
+    gameCanvas.addEventListener("touchstart", function(e) {
+      e.preventDefault();
+      jumpOrRestart();
     });
+    gameCanvas.addEventListener("mousedown", jumpOrRestart);
   </script>
 </body>
 </html>
