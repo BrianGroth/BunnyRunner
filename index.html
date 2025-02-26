@@ -38,12 +38,18 @@
   const scene = new THREE.Scene();
   scene.fog = new THREE.Fog(0xa0a0a0, 50, 200);
 
+  scene.background = new THREE.Color(0xa0a0a0);
+
+
   const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
   // We'll update the camera's position relative to the bunny later.
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
+
+  renderer.setPixelRatio(window.devicePixelRatio);
+
   document.body.appendChild(renderer.domElement);
 
   // ====== LIGHTING & ENVIRONMENT ======
