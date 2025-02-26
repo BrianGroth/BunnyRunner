@@ -1,414 +1,391 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8">
-  <title>3D Bunny Endless Runner (3D)</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Endless Runner: Rabbit Emoji Adventure - Enhanced Scoring & Flying Objects</title>
   <style>
-    body {
+    body, html {
       margin: 0;
+      padding: 0;
       overflow: hidden;
-      background: #000;
+      background: #eef;
     }
-    #ui {
+    canvas {
       position: absolute;
-      top: 10px;
-      left: 10px;
-      color: #fff;
-      font-family: sans-serif;
-      font-size: 20px;
-      z-index: 10;
-    }
-    #message {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      color: #fff;
-      font-size: 2em;
-      font-family: sans-serif;
-      z-index: 10;
-      text-align: center;
-      pointer-events: none;
+      top: 0;
+      left: 0;
     }
   </style>
 </head>
 <body>
-<div id="ui">Score: <span id="score">0</span></div>
-<div id="message">Tap or press any key to start</div>
+  <!-- Background canvas: sky, clouds, flying objects, and parallax hills -->
+  <canvas id="bgCanvas"></canvas>
+  <!-- Game canvas: rabbit, falling items, and UI -->
+  <canvas id="gameCanvas"></canvas>
 
-<!-- Include Three.js from a CDN -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<!-- Add GLTFLoader -->
-<script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/loaders/GLTFLoader.js"></script>
-<script>
-  // ====== SCENE SETUP ======
-  const scene = new THREE.Scene();
+  <script>
+    // Canvas setup.
+    const bgCanvas = document.getElementById("bgCanvas");
+    const bgCtx = bgCanvas.getContext("2d");
+    const gameCanvas = document.getElementById("gameCanvas");
+    const ctx = gameCanvas.getContext("2d");
 
-  // Set a bright sky background color
-  scene.background = new THREE.Color(0x87ceeb);
+    // Global game state.
+    let initialScore = 10;
+    let score = initialScore;
+    let difficulty = 0; // increases falling speed gradually
+    let gameStarted = false;
+    let gameOver = false;
+    let spawnTimer = 0;
+    let bgOffset = 0; // for parallax effects
+    let ouchTimestamp = 0; // time when "ouch" was triggered
 
-  // Adjust fog so it's less aggressive (sky color, start distance, end distance)
-  scene.fog = new THREE.Fog(0x87ceeb, 80, 400);
+    // Dimensions and ground.
+    let groundY;
+    const rabbitSize = 50;
+    let rabbit = {
+      x: 0, // will be centered in resize()
+      y: 0, // will be set in resize() to rest on the ground
+      size: rabbitSize,
+      velocityY: 0,
+      jumpForce: -12,
+      gravity: 0.5,
+      animCounter: 0,
+      animFrame: 0  // toggles between 0 and 1 for simple animation
+    };
 
-  const camera = new THREE.PerspectiveCamera(
-    75,
-    window.innerWidth / window.innerHeight,
-    0.1,
-    1000
-  );
+    let items = []; // falling items: food and obstacles
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setPixelRatio(window.devicePixelRatio);
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.shadowMap.enabled = true;
-  document.body.appendChild(renderer.domElement);
-
-  // ====== LIGHTING & ENVIRONMENT ======
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-  scene.add(ambientLight);
-
-  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-  directionalLight.position.set(0, 50, 50);
-  directionalLight.castShadow = true;
-  scene.add(directionalLight);
-
-  // Create a large ground plane
-  const groundGeo = new THREE.PlaneGeometry(1000, 1000);
-  const groundMat = new THREE.MeshPhongMaterial({ color: 0x228822 });
-  const ground = new THREE.Mesh(groundGeo, groundMat);
-  ground.rotation.x = -Math.PI / 2; // horizontal
-  ground.receiveShadow = true;
-  scene.add(ground);
-
-  // ====== MODEL LOADING ======
-  const loader = new THREE.GLTFLoader();
-
-  let bunny; // Changed to let to allow assignment in the loader
-  loader.load(
-    'models/bunny.glb', // Path to your bunny model
-    function (gltf) {
-      bunny = gltf.scene;
-      bunny.castShadow = true;
-      bunny.scale.set(0.5, 0.5, 0.5); // Adjust scale as needed
-      bunny.position.set(0, 0.75, 0);
-      scene.add(bunny);
-    },
-    undefined,
-    function (error) {
-      console.error('An error occurred while loading the bunny model.', error);
-    }
-  );
-
-  function loadObstacle() {
-    loader.load(
-      'models/rock.glb', // Path to your rock model
-      function (gltf) {
-        const obstacle = gltf.scene;
-        obstacle.scale.set(0.5, 0.5, 0.5); // Adjust scale as needed
-        obstacle.castShadow = true;
-        return obstacle;
-      },
-      undefined,
-      function (error) {
-        console.error('An error occurred while loading the rock model.', error);
-      }
-    );
-  }
-
-  function loadCollectible() {
-    loader.load(
-      'models/fruit.glb', // Path to your fruit model
-      function (gltf) {
-        const collectible = gltf.scene;
-        collectible.scale.set(0.5, 0.5, 0.5); // Adjust scale as needed
-        collectible.castShadow = true;
-        return collectible
-      },
-      undefined,
-      function (error) {
-        console.error('An error occurred while loading the fruit model.', error);
-      }
-    );
-  }
-
-  // ====== GAME STATE VARIABLES ======
-  let score = 0;
-  let gameStarted = false;
-  let gameOver = false;
-  let forwardSpeed = 0.2;  // bunny's forward speed (along negative Z)
-  let difficulty = 0;
-  let targetLane = 0;      // -1 (left), 0 (center), 1 (right)
-  let velocityY = 0;       // vertical velocity for jump
-  const gravity = 0.05;
-  const jumpForce = 0.8;
-  let canJump = true;      // to prevent double jumps
-
-  // Obstacles & Collectibles
-  const obstacles = [];
-  const collectibles = [];
-  let spawnTimer = 0;
-  const spawnInterval = 100; // frames between spawns
-
-  // ====== UI ELEMENTS ======
-  const uiScore = document.getElementById("score");
-  const messageDiv = document.getElementById("message");
-
-  // ====== INPUT HANDLING ======
-  window.addEventListener("keydown", handleKey);
-  renderer.domElement.addEventListener("touchstart", handleTouchStart, { passive: false });
-  renderer.domElement.addEventListener("touchmove", handleTouchMove, { passive: false });
-  renderer.domElement.addEventListener("touchend", handleTouchEnd, { passive: false });
-
-  let touchStartX = null;
-  function handleKey(e) {
-    if (!gameStarted) startGame();
-    if (gameOver) return;
-    if (e.key === "ArrowLeft") {
-      if (targetLane > -1) targetLane--;
-    } else if (e.key === "ArrowRight") {
-      if (targetLane < 1) targetLane++;
-    } else if (e.key === "ArrowUp") {
-      jump();
-    }
-  }
-
-  function handleTouchStart(e) {
-    e.preventDefault();
-    if (!gameStarted) startGame();
-    touchStartX = e.touches[0].clientX;
-  }
-  function handleTouchMove(e) {
-    e.preventDefault();
-    if (!touchStartX) return;
-    let deltaX = e.touches[0].clientX - touchStartX;
-    if (Math.abs(deltaX) > 50) {
-      if (deltaX > 0 && targetLane < 1) {
-        targetLane++;
-        touchStartX = e.touches[0].clientX;
-      } else if (deltaX < 0 && targetLane > -1) {
-        targetLane--;
-        touchStartX = e.touches[0].clientX;
+    // Clouds for a creative sky.
+    let clouds = [];
+    function initClouds() {
+      clouds = [];
+      for (let i = 0; i < 5; i++) {
+        let x = Math.random() * bgCanvas.width;
+        let y = Math.random() * (bgCanvas.height / 2);
+        let speed = 0.3 + Math.random() * 0.7;
+        clouds.push({ x, y, speed });
       }
     }
-  }
-  function handleTouchEnd(e) {
-    e.preventDefault();
-    if (touchStartX !== null) {
-      jump();
-      touchStartX = null;
-    }
-  }
 
-  // ====== GAME CONTROL FUNCTIONS ======
-  function startGame() {
-    gameStarted = true;
-    messageDiv.style.display = "none";
-  }
-
-  function endGame() {
-    gameOver = true;
-    messageDiv.innerText = "Game Over! Tap or press any key to restart.";
-    messageDiv.style.display = "block";
-  }
-
-  function resetGame() {
-    // Remove obstacles and collectibles from scene
-    obstacles.forEach(obj => scene.remove(obj));
-    obstacles.length = 0;
-    collectibles.forEach(obj => scene.remove(obj));
-    collectibles.length = 0;
-
-    score = 0;
-    uiScore.innerText = score;
-    // respawn bunny
-    scene.remove(bunny);
-    loader.load(
-      'models/bunny.glb', // Path to your bunny model
-      function (gltf) {
-        bunny = gltf.scene;
-        bunny.castShadow = true;
-        bunny.scale.set(0.5, 0.5, 0.5); // Adjust scale as needed
-        bunny.position.set(0, 0.75, 0);
-        scene.add(bunny);
-      },
-      undefined,
-      function (error) {
-        console.error('An error occurred while loading the bunny model.', error);
+    // Flying objects in the sky.
+    let flyingObjects = [];
+    function initFlyingObjects() {
+      flyingObjects = [];
+      // Use the requested flying emojis.
+      const objects = ['🛬', '🛫', '🛩️', '🦆', '🪁'];
+      // Spawn 3 flying objects.
+      for (let i = 0; i < 3; i++) {
+        let x = Math.random() * bgCanvas.width;
+        let y = Math.random() * (bgCanvas.height / 3); // upper third
+        let speed = 1 + Math.random() * 2; // speed between 1 and 3
+        let emoji = objects[Math.floor(Math.random() * objects.length)];
+        flyingObjects.push({ x, y, speed, emoji });
       }
-    );
-    targetLane = 0;
-    velocityY = 0;
-    forwardSpeed = 0.2;
-    difficulty = 0;
-    gameOver = false;
-    gameStarted = true;
-    messageDiv.style.display = "none";
-  }
-
-  function jump() {
-    if (canJump && !gameOver) {
-      velocityY = jumpForce;
-      canJump = false;
     }
-  }
 
-  // ====== SPAWN OBSTACLES & COLLECTIBLES ======
-  function spawnEntities() {
-    const isCollectible = Math.random() < 0.6; // 60% chance collectible
-    const lanes = [-1, 0, 1];
-    const lane = lanes[Math.floor(Math.random() * lanes.length)];
-    const xPos = lane * laneWidth;
-    const zPos = bunny.position.z - 50; // spawn ahead of the bunny
+    // Resize canvases and reposition elements.
+    function resize() {
+      bgCanvas.width = window.innerWidth;
+      bgCanvas.height = window.innerHeight;
+      gameCanvas.width = window.innerWidth;
+      gameCanvas.height = window.innerHeight;
+      groundY = gameCanvas.height - 50;
+      // Center the rabbit at the bottom.
+      rabbit.x = gameCanvas.width / 2 - rabbit.size / 2;
+      rabbit.y = groundY - rabbit.size;
+      initClouds();
+      initFlyingObjects();
+    }
+    window.addEventListener("resize", resize);
+    resize();
 
-    if (isCollectible) {
-      loader.load(
-        'models/fruit.glb', // Path to your fruit model
-        function (gltf) {
-          const collectible = gltf.scene;
-          collectible.scale.set(0.5, 0.5, 0.5); // Adjust scale as needed
-          collectible.castShadow = true;
-          collectible.position.set(xPos, 0.5, zPos);
-          scene.add(collectible);
-          collectibles.push(collectible);
-        },
-        undefined,
-        function (error) {
-          console.error('An error occurred while loading the fruit model.', error);
+    // Spawn a falling item from the top.
+    function spawnItem() {
+      let type = Math.random() < 0.6 ? 'food' : 'obstacle';
+      let emoji = '';
+      if (type === 'food') {
+        const foods = ['🍎', '🍌', '🍇', '🍉', '🍓', '🍊', '🥕', '🥦'];
+        emoji = foods[Math.floor(Math.random() * foods.length)];
+      } else {
+        const obstacles = ['🌳', '🪨'];
+        emoji = obstacles[Math.floor(Math.random() * obstacles.length)];
+      }
+      let x = Math.random() * (gameCanvas.width - 40);
+      let y = -40; // just above the top
+      let size = 40;
+      let baseSpeed = 3;
+      let speed = baseSpeed + difficulty;
+      items.push({ type, emoji, x, y, size, speed });
+    }
+
+    // Update game state.
+    function update() {
+      if (gameOver) {
+        bgOffset += 1;
+        updateFlyingObjects();
+        updateClouds();
+        return;
+      }
+
+      if (gameStarted) {
+        difficulty += 0.005; // gradually increase difficulty
+      }
+
+      bgOffset += 1;
+
+      // Update rabbit physics.
+      rabbit.velocityY += rabbit.gravity;
+      rabbit.y += rabbit.velocityY;
+      if (rabbit.y > groundY - rabbit.size) {
+        rabbit.y = groundY - rabbit.size;
+        rabbit.velocityY = 0;
+      }
+      // Rabbit animation toggles every 15 frames.
+      rabbit.animCounter++;
+      if (rabbit.animCounter > 15) {
+        rabbit.animFrame = (rabbit.animFrame + 1) % 2;
+        rabbit.animCounter = 0;
+      }
+
+      // Update clouds.
+      updateClouds();
+      // Update flying objects.
+      updateFlyingObjects();
+
+      // Update falling items.
+      for (let i = items.length - 1; i >= 0; i--) {
+        let item = items[i];
+        item.y += item.speed;
+        // Collision detection.
+        if (
+          item.x < rabbit.x + rabbit.size &&
+          item.x + item.size > rabbit.x &&
+          item.y < rabbit.y + rabbit.size &&
+          item.y + item.size > rabbit.y
+        ) {
+          if (item.type === 'food') {
+            score += 3;  // +3 for catching food
+          } else {
+            score -= 2;  // -2 for hitting an obstacle
+            ouchTimestamp = Date.now();
+          }
+          items.splice(i, 1);
+          if (score <= 0) {
+            score = 0;
+            gameOver = true;
+          }
+        } else if (item.y > gameCanvas.height) {
+          // Deduct 2 points if a food item is missed.
+          if (item.type === 'food') {
+            score -= 2;
+            if (score <= 0) {
+              score = 0;
+              gameOver = true;
+            }
+          }
+          items.splice(i, 1);
         }
-      );
-    } else {
-      loader.load(
-        'models/rock.glb', // Path to your rock model
-        function (gltf) {
-          const obstacle = gltf.scene;
-          obstacle.scale.set(0.5, 0.5, 0.5); // Adjust scale as needed
-          obstacle.castShadow = true;
-          obstacle.position.set(xPos, 0.5, zPos);
-          scene.add(obstacle);
-          obstacles.push(obstacle);
-        },
-        undefined,
-        function (error) {
-          console.error('An error occurred while loading the rock model.', error);
+      }
+
+      // Spawn new items based on difficulty.
+      let spawnInterval = Math.max(30, 90 - Math.floor(difficulty * 10));
+      spawnTimer++;
+      if (spawnTimer > spawnInterval) {
+        spawnItem();
+        spawnTimer = 0;
+      }
+    }
+
+    // Update clouds.
+    function updateClouds() {
+      clouds.forEach(cloud => {
+        cloud.y += cloud.speed;
+        if (cloud.y > bgCanvas.height + 30) {
+          cloud.y = -30;
+          cloud.x = Math.random() * bgCanvas.width;
         }
-      );
-    }
-  }
-
-  // ====== MAIN GAME LOOP ======
-  function animate() {
-    requestAnimationFrame(animate);
-
-    if (!gameStarted || gameOver || !bunny) { // Ensure bunny is loaded before rendering
-      renderer.render(scene, camera);
-      return;
+      });
     }
 
-    // Increase difficulty & speed gradually
-    difficulty += 0.001;
-    forwardSpeed += 0.0001;
-
-    // Smoothly update bunny's lane position
-    const desiredX = targetLane * laneWidth;
-    bunny.position.x += (desiredX - bunny.position.x) * 0.2;
-
-    // Jump physics
-    bunny.position.y += velocityY;
-    velocityY -= gravity;
-    if (bunny.position.y <= 0.75) {
-      bunny.position.y = 0.75;
-      velocityY = 0;
-      canJump = true;
+    // Update flying objects.
+    function updateFlyingObjects() {
+      flyingObjects.forEach(obj => {
+        obj.x -= obj.speed; // move leftward
+        if (obj.x < -50) {
+          obj.x = bgCanvas.width + 50;
+          obj.y = Math.random() * (bgCanvas.height / 3);
+          const objects = ['🛬', '🛫', '🛩️', '🦆', '🪁'];
+          obj.emoji = objects[Math.floor(Math.random() * objects.length)];
+        }
+      });
     }
 
-    // Move bunny forward (negative Z)
-    bunny.position.z -= forwardSpeed;
+    // Draw the parallax background.
+    function drawBackground() {
+      bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
+      // Sky gradient.
+      let gradient = bgCtx.createLinearGradient(0, 0, 0, bgCanvas.height);
+      gradient.addColorStop(0, "#aee");
+      gradient.addColorStop(1, "#ccf");
+      bgCtx.fillStyle = gradient;
+      bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
 
-    // Reposition camera behind and above the bunny
-    camera.position.x = bunny.position.x;
-    camera.position.y = bunny.position.y + 4;   // a bit higher
-    camera.position.z = bunny.position.z + 10;  // behind
-    // Look slightly ahead of the bunny to see more track
-    camera.lookAt(bunny.position.x, bunny.position.y, bunny.position.z - 10);
+      // Draw distant hills.
+      let hillHeight = 100;
+      bgCtx.fillStyle = "#8c8";
+      for (let i = -1; i < 2; i++) {
+        bgCtx.beginPath();
+        let startX = i * gameCanvas.width / 2;
+        bgCtx.moveTo(startX, groundY);
+        bgCtx.quadraticCurveTo(
+          startX + gameCanvas.width / 4,
+          groundY - hillHeight,
+          startX + gameCanvas.width / 2,
+          groundY
+        );
+        bgCtx.fill();
+      }
 
-    // Spawn entities periodically
-    spawnTimer++;
-    if (spawnTimer > spawnInterval) {
-      spawnEntities();
+      // Draw drifting clouds.
+      bgCtx.font = "30px sans-serif";
+      clouds.forEach(cloud => {
+        bgCtx.fillText("☁️", cloud.x, cloud.y);
+      });
+
+      // Draw flying objects.
+      bgCtx.font = "30px sans-serif";
+      flyingObjects.forEach(obj => {
+        bgCtx.fillText(obj.emoji, obj.x, obj.y);
+      });
+
+      // Draw ground.
+      bgCtx.fillStyle = "#654321";
+      bgCtx.fillRect(0, groundY, bgCanvas.width, bgCanvas.height - groundY);
+    }
+
+    // Draw game objects and UI.
+    function drawGame() {
+      ctx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
+
+      // Draw falling items.
+      items.forEach(item => {
+        ctx.font = item.size + "px sans-serif";
+        ctx.fillText(item.emoji, item.x, item.y + item.size);
+      });
+
+      // Draw the animated rabbit.
+      ctx.font = rabbit.size + "px sans-serif";
+      let rabbitEmoji = (rabbit.animFrame === 0) ? "🐰" : "🐇";
+      ctx.fillText(rabbitEmoji, rabbit.x, rabbit.y + rabbit.size);
+
+      // Display "ouch" if recently hit, with fading effect over 1 second.
+      if (ouchTimestamp > 0) {
+        let elapsed = Date.now() - ouchTimestamp;
+        if (elapsed < 1000) {
+          let alpha = 1 - (elapsed / 1000);
+          ctx.save();
+          ctx.globalAlpha = alpha;
+          ctx.font = "20px sans-serif";
+          ctx.fillStyle = "red";
+          ctx.fillText("ouch", rabbit.x, rabbit.y - 10);
+          ctx.restore();
+        } else {
+          ouchTimestamp = 0;
+        }
+      }
+
+      // Show score.
+      ctx.font = "24px sans-serif";
+      ctx.fillStyle = "#000";
+      ctx.fillText("Score: " + score, 10, 30);
+
+      // Pre-game overlay.
+      if (!gameStarted && !gameOver) {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+        ctx.fillRect(0, 0, gameCanvas.width, gameCanvas.height);
+        ctx.font = "30px sans-serif";
+        ctx.fillStyle = "#fff";
+        ctx.textAlign = "center";
+        ctx.fillText("Tap to start and jump!", gameCanvas.width / 2, gameCanvas.height / 2);
+        ctx.textAlign = "start";
+      }
+
+      // Game Over screen.
+      if (gameOver) {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+        ctx.fillRect(0, 0, gameCanvas.width, gameCanvas.height);
+        ctx.font = "40px sans-serif";
+        ctx.fillStyle = "#fff";
+        ctx.textAlign = "center";
+        ctx.fillText("Game Over", gameCanvas.width / 2, gameCanvas.height / 2 - 20);
+        ctx.font = "30px sans-serif";
+        ctx.fillText("Tap to Restart", gameCanvas.width / 2, gameCanvas.height / 2 + 20);
+        ctx.textAlign = "start";
+      }
+    }
+
+    // Main game loop.
+    function gameLoop() {
+      update();
+      drawBackground();
+      drawGame();
+      requestAnimationFrame(gameLoop);
+    }
+    gameLoop();
+
+    // On tap/click: jump or restart.
+    function jumpOrRestart() {
+      if (gameOver) {
+        restartGame();
+        return;
+      }
+      if (!gameStarted) {
+        gameStarted = true;
+      }
+      // Jump if the rabbit is on the ground.
+      if (rabbit.y >= groundY - rabbit.size - 1) {
+        rabbit.velocityY = rabbit.jumpForce;
+      }
+    }
+
+    // Reset game state.
+    function restartGame() {
+      score = initialScore;
+      difficulty = 0;
+      gameStarted = false;
+      gameOver = false;
       spawnTimer = 0;
+      items = [];
+      rabbit.x = gameCanvas.width / 2 - rabbit.size / 2;
+      rabbit.y = groundY - rabbit.size;
+      rabbit.velocityY = 0;
+      ouchTimestamp = 0;
+      bgOffset = 0;
+      initClouds();
+      initFlyingObjects();
     }
 
-    // Update obstacles
-    for (let i = obstacles.length - 1; i >= 0; i--) {
-      const obs = obstacles[i];
-      // Remove obstacles behind bunny
-      if (obs.position.z > bunny.position.z + 2) {
-        scene.remove(obs);
-        obstacles.splice(i, 1);
-      } else {
-        // Collision detection
-        if (
-          Math.abs(obs.position.x - bunny.position.x) < 0.7 &&
-          Math.abs(obs.position.z - bunny.position.z) < 0.7 &&
-          Math.abs(obs.position.y - bunny.position.y) < 1.0
-        ) {
-          // Hit obstacle
-          score -= 2;
-          uiScore.innerText = score;
-          scene.remove(obs);
-          obstacles.splice(i, 1);
-          if (score <= 0) endGame();
-        }
-      }
-    }
-
-    // Update collectibles
-    for (let i = collectibles.length - 1; i >= 0; i--) {
-      const col = collectibles[i];
-      if (col.position.z > bunny.position.z + 2) {
-        // Missed collectible
-        score -= 2;
-        uiScore.innerText = score;
-        scene.remove(col);
-        collectibles.splice(i, 1);
-        if (score <= 0) endGame();
-      } else {
-        // Check if collected
-        if (
-          Math.abs(col.position.x - bunny.position.x) < 0.7 &&
-          Math.abs(col.position.z - bunny.position.z) < 0.7 &&
-          Math.abs(col.position.y - bunny.position.y) < 1.0
-        ) {
-          // Collected
-          score += 3;
-          uiScore.innerText = score;
-          scene.remove(col);
-          collectibles.splice(i, 1);
-        }
-      }
-    }
-
-    renderer.render(scene, camera);
-  }
-  animate();
-
-  // ====== RESTART HANDLING ======
-  window.addEventListener("keydown", function(e) {
-    if (gameOver) resetGame();
-  });
-  window.addEventListener("touchstart", function(e) {
-    if (gameOver) {
+    // Listen for tap/click events.
+    gameCanvas.addEventListener("touchstart", function(e) {
       e.preventDefault();
-      resetGame();
-    }
-  });
+      jumpOrRestart();
+    });
+    gameCanvas.addEventListener("mousedown", jumpOrRestart);
 
-  // ====== HANDLE WINDOW RESIZE ======
-  window.addEventListener("resize", function() {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-  });
-</script>
+    // Allow horizontal movement by dragging.
+    function moveRabbit(e) {
+      let clientX = (e.touches && e.touches.length > 0) ? e.touches[0].clientX : e.clientX;
+      rabbit.x = clientX - rabbit.size / 2;
+      if (rabbit.x < 0) rabbit.x = 0;
+      if (rabbit.x > gameCanvas.width - rabbit.size) rabbit.x = gameCanvas.width - rabbit.size;
+    }
+    gameCanvas.addEventListener("touchmove", function(e) {
+      e.preventDefault();
+      moveRabbit(e);
+    });
+    gameCanvas.addEventListener("mousemove", moveRabbit);
+  </script>
 </body>
 </html>
