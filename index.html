@@ -38,6 +38,8 @@
 
 <!-- Include Three.js from a CDN -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<!-- Add GLTFLoader -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/loaders/GLTFLoader.js"></script>
 <script>
   // ====== SCENE SETUP ======
   const scene = new THREE.Scene();
@@ -78,16 +80,56 @@
   ground.receiveShadow = true;
   scene.add(ground);
 
-  // ====== BUNNY (PLAYER) ======
-  // Represent the bunny with a simple box, but taller to look more "bunny-like"
-  const laneWidth = 2; // distance between lanes
-  const bunnyGeometry = new THREE.BoxGeometry(1, 1.5, 1);
-  const bunnyMaterial = new THREE.MeshPhongMaterial({ color: 0xffaa00 });
-  const bunny = new THREE.Mesh(bunnyGeometry, bunnyMaterial);
-  bunny.castShadow = true;
-  // Start in the center lane, above ground
-  bunny.position.set(0, 0.75, 0);
-  scene.add(bunny);
+  // ====== MODEL LOADING ======
+  const loader = new THREE.GLTFLoader();
+
+  let bunny; // Changed to let to allow assignment in the loader
+  loader.load(
+    'models/bunny.glb', // Path to your bunny model
+    function (gltf) {
+      bunny = gltf.scene;
+      bunny.castShadow = true;
+      bunny.scale.set(0.5, 0.5, 0.5); // Adjust scale as needed
+      bunny.position.set(0, 0.75, 0);
+      scene.add(bunny);
+    },
+    undefined,
+    function (error) {
+      console.error('An error occurred while loading the bunny model.', error);
+    }
+  );
+
+  function loadObstacle() {
+    loader.load(
+      'models/rock.glb', // Path to your rock model
+      function (gltf) {
+        const obstacle = gltf.scene;
+        obstacle.scale.set(0.5, 0.5, 0.5); // Adjust scale as needed
+        obstacle.castShadow = true;
+        return obstacle;
+      },
+      undefined,
+      function (error) {
+        console.error('An error occurred while loading the rock model.', error);
+      }
+    );
+  }
+
+  function loadCollectible() {
+    loader.load(
+      'models/fruit.glb', // Path to your fruit model
+      function (gltf) {
+        const collectible = gltf.scene;
+        collectible.scale.set(0.5, 0.5, 0.5); // Adjust scale as needed
+        collectible.castShadow = true;
+        return collectible
+      },
+      undefined,
+      function (error) {
+        console.error('An error occurred while loading the fruit model.', error);
+      }
+    );
+  }
 
   // ====== GAME STATE VARIABLES ======
   let score = 0;
@@ -178,7 +220,22 @@
 
     score = 0;
     uiScore.innerText = score;
-    bunny.position.set(0, 0.75, 0);
+    // respawn bunny
+    scene.remove(bunny);
+    loader.load(
+      'models/bunny.glb', // Path to your bunny model
+      function (gltf) {
+        bunny = gltf.scene;
+        bunny.castShadow = true;
+        bunny.scale.set(0.5, 0.5, 0.5); // Adjust scale as needed
+        bunny.position.set(0, 0.75, 0);
+        scene.add(bunny);
+      },
+      undefined,
+      function (error) {
+        console.error('An error occurred while loading the bunny model.', error);
+      }
+    );
     targetLane = 0;
     velocityY = 0;
     forwardSpeed = 0.2;
@@ -204,23 +261,37 @@
     const zPos = bunny.position.z - 50; // spawn ahead of the bunny
 
     if (isCollectible) {
-      // Green sphere
-      const geometry = new THREE.SphereGeometry(0.4, 8, 8);
-      const material = new THREE.MeshPhongMaterial({ color: 0x00ff00 });
-      const collectible = new THREE.Mesh(geometry, material);
-      collectible.castShadow = true;
-      collectible.position.set(xPos, 0.5, zPos);
-      scene.add(collectible);
-      collectibles.push(collectible);
+      loader.load(
+        'models/fruit.glb', // Path to your fruit model
+        function (gltf) {
+          const collectible = gltf.scene;
+          collectible.scale.set(0.5, 0.5, 0.5); // Adjust scale as needed
+          collectible.castShadow = true;
+          collectible.position.set(xPos, 0.5, zPos);
+          scene.add(collectible);
+          collectibles.push(collectible);
+        },
+        undefined,
+        function (error) {
+          console.error('An error occurred while loading the fruit model.', error);
+        }
+      );
     } else {
-      // Red box
-      const geometry = new THREE.BoxGeometry(1, 1, 1);
-      const material = new THREE.MeshPhongMaterial({ color: 0xff0000 });
-      const obstacle = new THREE.Mesh(geometry, material);
-      obstacle.castShadow = true;
-      obstacle.position.set(xPos, 0.5, zPos);
-      scene.add(obstacle);
-      obstacles.push(obstacle);
+      loader.load(
+        'models/rock.glb', // Path to your rock model
+        function (gltf) {
+          const obstacle = gltf.scene;
+          obstacle.scale.set(0.5, 0.5, 0.5); // Adjust scale as needed
+          obstacle.castShadow = true;
+          obstacle.position.set(xPos, 0.5, zPos);
+          scene.add(obstacle);
+          obstacles.push(obstacle);
+        },
+        undefined,
+        function (error) {
+          console.error('An error occurred while loading the rock model.', error);
+        }
+      );
     }
   }
 
@@ -228,11 +299,7 @@
   function animate() {
     requestAnimationFrame(animate);
 
-    if (!gameStarted) {
-      renderer.render(scene, camera);
-      return;
-    }
-    if (gameOver) {
+    if (!gameStarted || gameOver || !bunny) { // Ensure bunny is loaded before rendering
       renderer.render(scene, camera);
       return;
     }
