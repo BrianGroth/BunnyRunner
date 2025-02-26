@@ -1,120 +1,181 @@
 <!DOCTYPE html>
 <html>
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Bunny Runner - Endless Runner Game</title>
-    <style>
-      html, body {
-        margin: 0;
-        padding: 0;
-        height: 100%;
-        overflow: hidden;
-        background: #000;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-      }
-      canvas {
-        display: block;
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-      }
-      #mobileControls {
-        position: absolute;
-        bottom: 10px;
-        width: 100%;
-        display: flex;
-        justify-content: center;
-      }
-      #mobileControls button {
-        width: 50px;
-        height: 50px;
-        font-size: 24px;
-        margin: 5px;
-        border: none;
-        background: rgba(255, 255, 255, 0.8);
-        border-radius: 50%;
-        cursor: pointer;
-      }
-    </style>
-  </head>
-  <body>
-    <canvas id="gameCanvas"></canvas>
-    <div id="mobileControls">
-      <button id="leftBtn">⬅</button>
-      <button id="rightBtn">➡</button>
-    </div>
-    <script>
-      const canvas = document.getElementById("gameCanvas");
-      const ctx = canvas.getContext("2d");
-      let canvasWidth = window.innerWidth;
-      let canvasHeight = window.innerHeight;
-      canvas.width = canvasWidth;
-      canvas.height = canvasHeight;
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Endless Runner: Rabbit Emoji Adventure</title>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #eef;
+    }
+    canvas {
+      display: block;
+      background: #ccf;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+  <script>
+    // Set up canvas
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
 
-      const bunnyImg = new Image();
-      bunnyImg.src = "bunny.png";
+    // Define ground and rabbit parameters
+    const groundY = canvas.height - 50;
+    const rabbitSize = 50;
+    let rabbit = {
+      x: 50,
+      y: groundY - rabbitSize,
+      size: rabbitSize,
+      velocityY: 0,
+      jumpForce: -12,
+      gravity: 0.5
+    };
 
-      let bunny = {
-        x: canvasWidth / 2 - 40,
-        y: canvasHeight * 0.8,
-        width: 80,
-        height: 80,
-      };
+    let score = 0;
+    let gameStarted = false;
+    let spawnTimer = 0;
+    let items = []; // array for fruits/vegetables (food) and obstacles
 
-      let objects = [];
-      let objectTypes = ["rock.png", "carrot.png", "tree.png", "friend.png"];
+    // Spawn a new item (food or obstacle) at the right edge
+    function spawnItem() {
+      let type = Math.random() < 0.6 ? 'food' : 'obstacle';
+      let emoji;
+      if (type === 'food') {
+        const foods = ['🍎', '🍌', '🍇', '🍉', '🍓', '🍊', '🥕', '🥦'];
+        emoji = foods[Math.floor(Math.random() * foods.length)];
+      } else {
+        const obs = ['🌳', '🪨'];
+        emoji = obs[Math.floor(Math.random() * obs.length)];
+      }
+      let y;
+      if (type === 'food') {
+        // Spawn food at a random height above ground so you may need to jump.
+        y = groundY - rabbitSize - Math.random() * 150;
+        if (y < 0) y = 0;
+      } else {
+        // Obstacles appear near the ground.
+        y = groundY - 40;
+      }
+      let size = 40;
+      let speed = 5;
+      items.push({ type, emoji, x: canvas.width, y, size, speed });
+    }
 
-      function spawnObject() {
-        let objType = objectTypes[Math.floor(Math.random() * objectTypes.length)];
-        let objImg = new Image();
-        objImg.src = objType;
-        objects.push({
-          x: Math.random() * canvasWidth,
-          y: -80,
-          width: 80,
-          height: 80,
-          img: objImg,
-          speed: 4 + Math.random() * 2
-        });
+    // Update game objects and check for collisions.
+    function update() {
+      if (!gameStarted) return;
+
+      // Update the rabbit's vertical position using gravity.
+      rabbit.velocityY += rabbit.gravity;
+      rabbit.y += rabbit.velocityY;
+      if (rabbit.y > groundY - rabbit.size) {
+        rabbit.y = groundY - rabbit.size;
+        rabbit.velocityY = 0;
       }
-      
-      function draw() {
-        ctx.clearRect(0, 0, canvasWidth, canvasHeight);
-        let grd = ctx.createLinearGradient(0, 0, 0, canvasHeight);
-        grd.addColorStop(0, "#87ceeb");
-        grd.addColorStop(1, "#7cfc00");
-        ctx.fillStyle = grd;
-        ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-        
-        objects.forEach(obj => {
-          ctx.drawImage(obj.img, obj.x, obj.y, obj.width, obj.height);
-          obj.y += obj.speed;
-        });
-        
-        ctx.drawImage(bunnyImg, bunny.x, bunny.y, bunny.width, bunny.height);
+
+      // Move each item leftward and check for collision with the rabbit.
+      for (let i = items.length - 1; i >= 0; i--) {
+        let item = items[i];
+        item.x -= item.speed;
+
+        // Simple rectangle collision detection.
+        if (
+          item.x < rabbit.x + rabbit.size &&
+          item.x + item.size > rabbit.x &&
+          item.y < rabbit.y + rabbit.size &&
+          item.y + item.size > rabbit.y
+        ) {
+          if (item.type === 'food') {
+            score += 1;
+          } else {
+            score -= 1;
+          }
+          items.splice(i, 1);
+        } else if (item.x + item.size < 0) {
+          // Remove items that have moved off screen.
+          items.splice(i, 1);
+        }
       }
-      
-      function update() {
-        draw();
-        requestAnimationFrame(update);
+
+      // Periodically spawn new items.
+      spawnTimer++;
+      if (spawnTimer > 90) {
+        spawnItem();
+        spawnTimer = 0;
       }
-      
-      document.getElementById("leftBtn").addEventListener("click", () => {
-        bunny.x -= 100;
+    }
+
+    // Draw the game objects on the canvas.
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw the ground.
+      ctx.fillStyle = "#654321";
+      ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
+
+      // Draw the rabbit.
+      ctx.font = rabbit.size + "px sans-serif";
+      // (Add rabbit.size to y to position based on the text baseline.)
+      ctx.fillText("🐰", rabbit.x, rabbit.y + rabbit.size);
+
+      // Draw all spawned items.
+      items.forEach(item => {
+        ctx.font = item.size + "px sans-serif";
+        ctx.fillText(item.emoji, item.x, item.y + item.size);
       });
-      
-      document.getElementById("rightBtn").addEventListener("click", () => {
-        bunny.x += 100;
-      });
 
-      setInterval(spawnObject, 2000);
+      // Display the score.
+      ctx.font = "24px sans-serif";
+      ctx.fillStyle = "#000";
+      ctx.fillText("Score: " + score, 10, 30);
+
+      // If the game hasn't started, display instructions.
+      if (!gameStarted) {
+        ctx.font = "30px sans-serif";
+        ctx.fillStyle = "rgba(0,0,0,0.5)";
+        ctx.fillText("Tap to start and jump!", canvas.width / 2 - 120, canvas.height / 2);
+      }
+    }
+
+    // Main game loop.
+    function gameLoop() {
       update();
-    </script>
-  </body>
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
+    gameLoop();
+
+    // Control: tap (or click) to start the game and make the rabbit jump.
+    function jump() {
+      if (!gameStarted) {
+        gameStarted = true;
+      }
+      // Only jump if the rabbit is on (or nearly on) the ground.
+      if (rabbit.y >= groundY - rabbit.size - 1) {
+        rabbit.velocityY = rabbit.jumpForce;
+      }
+    }
+
+    canvas.addEventListener("touchstart", function(e) {
+      e.preventDefault();
+      jump();
+    });
+    canvas.addEventListener("mousedown", function() {
+      jump();
+    });
+
+    // Optional: Adjust the canvas size if the window is resized.
+    window.addEventListener("resize", function() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    });
+  </script>
+</body>
 </html>
