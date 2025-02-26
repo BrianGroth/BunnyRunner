@@ -1,391 +1,317 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Endless Runner: Rabbit Emoji Adventure - Enhanced Scoring & Flying Objects</title>
+  <meta charset="UTF-8">
+  <title>3D Bunny Endless Runner</title>
   <style>
-    body, html {
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      background: #eef;
-    }
-    canvas {
+    body { margin: 0; overflow: hidden; background: #000; }
+    #ui {
       position: absolute;
-      top: 0;
-      left: 0;
+      top: 10px;
+      left: 10px;
+      color: #fff;
+      font-family: sans-serif;
+      font-size: 20px;
+      z-index: 10;
+    }
+    #message {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #fff;
+      font-size: 2em;
+      font-family: sans-serif;
+      z-index: 10;
+      text-align: center;
+      pointer-events: none;
     }
   </style>
 </head>
 <body>
-  <!-- Background canvas: sky, clouds, flying objects, and parallax hills -->
-  <canvas id="bgCanvas"></canvas>
-  <!-- Game canvas: rabbit, falling items, and UI -->
-  <canvas id="gameCanvas"></canvas>
+<div id="ui">Score: <span id="score">0</span></div>
+<div id="message">Tap or press any key to start</div>
+<!-- Include Three.js from a CDN -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+  // ====== SCENE SETUP ======
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.Fog(0xa0a0a0, 50, 200);
 
-  <script>
-    // Canvas setup.
-    const bgCanvas = document.getElementById("bgCanvas");
-    const bgCtx = bgCanvas.getContext("2d");
-    const gameCanvas = document.getElementById("gameCanvas");
-    const ctx = gameCanvas.getContext("2d");
+  const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+  // We'll update the camera's position relative to the bunny later.
 
-    // Global game state.
-    let initialScore = 10;
-    let score = initialScore;
-    let difficulty = 0; // increases falling speed gradually
-    let gameStarted = false;
-    let gameOver = false;
-    let spawnTimer = 0;
-    let bgOffset = 0; // for parallax effects
-    let ouchTimestamp = 0; // time when "ouch" was triggered
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  document.body.appendChild(renderer.domElement);
 
-    // Dimensions and ground.
-    let groundY;
-    const rabbitSize = 50;
-    let rabbit = {
-      x: 0, // will be centered in resize()
-      y: 0, // will be set in resize() to rest on the ground
-      size: rabbitSize,
-      velocityY: 0,
-      jumpForce: -12,
-      gravity: 0.5,
-      animCounter: 0,
-      animFrame: 0  // toggles between 0 and 1 for simple animation
-    };
+  // ====== LIGHTING & ENVIRONMENT ======
+  const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+  scene.add(ambientLight);
 
-    let items = []; // falling items: food and obstacles
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  directionalLight.position.set(0, 50, 50);
+  directionalLight.castShadow = true;
+  scene.add(directionalLight);
 
-    // Clouds for a creative sky.
-    let clouds = [];
-    function initClouds() {
-      clouds = [];
-      for (let i = 0; i < 5; i++) {
-        let x = Math.random() * bgCanvas.width;
-        let y = Math.random() * (bgCanvas.height / 2);
-        let speed = 0.3 + Math.random() * 0.7;
-        clouds.push({ x, y, speed });
+  // Ground plane
+  const groundGeo = new THREE.PlaneGeometry(1000, 1000);
+  const groundMat = new THREE.MeshPhongMaterial({ color: 0x228822 });
+  const ground = new THREE.Mesh(groundGeo, groundMat);
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  scene.add(ground);
+
+  // ====== BUNNY (PLAYER) ======
+  // We represent the bunny as a low-poly box.
+  const laneWidth = 2; // distance between lanes
+  const bunnyGeometry = new THREE.BoxGeometry(1, 1, 1.5);
+  const bunnyMaterial = new THREE.MeshPhongMaterial({ color: 0xffaa00 });
+  const bunny = new THREE.Mesh(bunnyGeometry, bunnyMaterial);
+  bunny.castShadow = true;
+  // Initial position: center lane, standing on the ground (y = 0.5 because box height=1)
+  bunny.position.set(0, 0.5, 0);
+  scene.add(bunny);
+
+  // ====== GAME STATE VARIABLES ======
+  let score = 0;
+  let gameStarted = false;
+  let gameOver = false;
+  let forwardSpeed = 0.2;  // bunny's forward speed (along negative Z)
+  let difficulty = 0;
+  let targetLane = 0;      // -1 (left), 0 (center), 1 (right)
+  let velocityY = 0;       // vertical velocity for jump
+  const gravity = 0.05;
+  const jumpForce = 0.8;
+  let canJump = true;      // flag to prevent double jumps
+
+  // Arrays for obstacles and collectibles
+  const obstacles = [];
+  const collectibles = [];
+  let spawnTimer = 0;
+  const spawnInterval = 100; // frames between spawns
+
+  // ====== UI ELEMENTS ======
+  const uiScore = document.getElementById("score");
+  const messageDiv = document.getElementById("message");
+
+  // ====== INPUT HANDLING ======
+  window.addEventListener("keydown", handleKey);
+  window.addEventListener("touchstart", handleTouchStart);
+  window.addEventListener("touchmove", handleTouchMove);
+  window.addEventListener("touchend", handleTouchEnd);
+
+  let touchStartX = null;
+  function handleKey(e) {
+    if (!gameStarted) startGame();
+    if (gameOver) return;
+    if (e.key === "ArrowLeft") {
+      if (targetLane > -1) targetLane--;
+    } else if (e.key === "ArrowRight") {
+      if (targetLane < 1) targetLane++;
+    } else if (e.key === "ArrowUp") {
+      jump();
+    }
+  }
+  function handleTouchStart(e) {
+    if (!gameStarted) startGame();
+    touchStartX = e.touches[0].clientX;
+  }
+  function handleTouchMove(e) {
+    if (!touchStartX) return;
+    let deltaX = e.touches[0].clientX - touchStartX;
+    if (Math.abs(deltaX) > 50) {
+      if (deltaX > 0 && targetLane < 1) {
+        targetLane++;
+        touchStartX = e.touches[0].clientX;
+      } else if (deltaX < 0 && targetLane > -1) {
+        targetLane--;
+        touchStartX = e.touches[0].clientX;
       }
     }
+  }
+  function handleTouchEnd(e) {
+    if (touchStartX !== null) {
+      jump();
+      touchStartX = null;
+    }
+  }
 
-    // Flying objects in the sky.
-    let flyingObjects = [];
-    function initFlyingObjects() {
-      flyingObjects = [];
-      // Use the requested flying emojis.
-      const objects = ['🛬', '🛫', '🛩️', '🦆', '🪁'];
-      // Spawn 3 flying objects.
-      for (let i = 0; i < 3; i++) {
-        let x = Math.random() * bgCanvas.width;
-        let y = Math.random() * (bgCanvas.height / 3); // upper third
-        let speed = 1 + Math.random() * 2; // speed between 1 and 3
-        let emoji = objects[Math.floor(Math.random() * objects.length)];
-        flyingObjects.push({ x, y, speed, emoji });
-      }
+  // ====== GAME CONTROL FUNCTIONS ======
+  function startGame() {
+    gameStarted = true;
+    messageDiv.style.display = "none";
+  }
+  function endGame() {
+    gameOver = true;
+    messageDiv.innerText = "Game Over! Tap or press any key to restart.";
+    messageDiv.style.display = "block";
+  }
+  function resetGame() {
+    // Remove all obstacles and collectibles
+    obstacles.forEach(obj => scene.remove(obj));
+    obstacles.length = 0;
+    collectibles.forEach(obj => scene.remove(obj));
+    collectibles.length = 0;
+    score = 0;
+    uiScore.innerText = score;
+    bunny.position.set(0, 0.5, 0);
+    targetLane = 0;
+    velocityY = 0;
+    forwardSpeed = 0.2;
+    difficulty = 0;
+    gameOver = false;
+    gameStarted = true;
+    messageDiv.style.display = "none";
+  }
+
+  function jump() {
+    if (canJump && !gameOver) {
+      velocityY = jumpForce;
+      canJump = false;
+    }
+  }
+
+  // ====== SPAWN OBSTACLES & COLLECTIBLES ======
+  // Obstacles are represented as red boxes; collectibles as green spheres.
+  function spawnEntities() {
+    const isCollectible = Math.random() < 0.6; // 60% chance to spawn a collectible
+    const lanes = [-1, 0, 1];
+    const lane = lanes[Math.floor(Math.random() * lanes.length)];
+    const xPos = lane * laneWidth;
+    const zPos = bunny.position.z - 50; // spawn well ahead of the bunny
+    if (isCollectible) {
+      const geometry = new THREE.SphereGeometry(0.5, 8, 8);
+      const material = new THREE.MeshPhongMaterial({ color: 0x00ff00 });
+      const collectible = new THREE.Mesh(geometry, material);
+      collectible.castShadow = true;
+      collectible.position.set(xPos, 0.5, zPos);
+      scene.add(collectible);
+      collectibles.push(collectible);
+    } else {
+      const geometry = new THREE.BoxGeometry(1, 1, 1);
+      const material = new THREE.MeshPhongMaterial({ color: 0xff0000 });
+      const obstacle = new THREE.Mesh(geometry, material);
+      obstacle.castShadow = true;
+      obstacle.position.set(xPos, 0.5, zPos);
+      scene.add(obstacle);
+      obstacles.push(obstacle);
+    }
+  }
+
+  // ====== MAIN GAME LOOP ======
+  function animate() {
+    requestAnimationFrame(animate);
+    if (!gameStarted) {
+      renderer.render(scene, camera);
+      return;
+    }
+    if (gameOver) {
+      renderer.render(scene, camera);
+      return;
     }
 
-    // Resize canvases and reposition elements.
-    function resize() {
-      bgCanvas.width = window.innerWidth;
-      bgCanvas.height = window.innerHeight;
-      gameCanvas.width = window.innerWidth;
-      gameCanvas.height = window.innerHeight;
-      groundY = gameCanvas.height - 50;
-      // Center the rabbit at the bottom.
-      rabbit.x = gameCanvas.width / 2 - rabbit.size / 2;
-      rabbit.y = groundY - rabbit.size;
-      initClouds();
-      initFlyingObjects();
-    }
-    window.addEventListener("resize", resize);
-    resize();
+    // Gradually increase difficulty and forward speed.
+    difficulty += 0.001;
+    forwardSpeed += 0.0001;
 
-    // Spawn a falling item from the top.
-    function spawnItem() {
-      let type = Math.random() < 0.6 ? 'food' : 'obstacle';
-      let emoji = '';
-      if (type === 'food') {
-        const foods = ['🍎', '🍌', '🍇', '🍉', '🍓', '🍊', '🥕', '🥦'];
-        emoji = foods[Math.floor(Math.random() * foods.length)];
-      } else {
-        const obstacles = ['🌳', '🪨'];
-        emoji = obstacles[Math.floor(Math.random() * obstacles.length)];
-      }
-      let x = Math.random() * (gameCanvas.width - 40);
-      let y = -40; // just above the top
-      let size = 40;
-      let baseSpeed = 3;
-      let speed = baseSpeed + difficulty;
-      items.push({ type, emoji, x, y, size, speed });
+    // Smoothly update bunny's lane position.
+    const desiredX = targetLane * laneWidth;
+    bunny.position.x += (desiredX - bunny.position.x) * 0.2;
+
+    // Bunny jump physics.
+    bunny.position.y += velocityY;
+    velocityY -= gravity;
+    if (bunny.position.y <= 0.5) {
+      bunny.position.y = 0.5;
+      velocityY = 0;
+      canJump = true;
     }
 
-    // Update game state.
-    function update() {
-      if (gameOver) {
-        bgOffset += 1;
-        updateFlyingObjects();
-        updateClouds();
-        return;
-      }
+    // Move bunny forward (along negative Z axis).
+    bunny.position.z -= forwardSpeed;
 
-      if (gameStarted) {
-        difficulty += 0.005; // gradually increase difficulty
-      }
+    // Update camera to follow the bunny (positioned behind and above).
+    camera.position.x = bunny.position.x;
+    camera.position.z = bunny.position.z + 10;
+    camera.position.y = bunny.position.y + 5;
+    camera.lookAt(bunny.position);
 
-      bgOffset += 1;
-
-      // Update rabbit physics.
-      rabbit.velocityY += rabbit.gravity;
-      rabbit.y += rabbit.velocityY;
-      if (rabbit.y > groundY - rabbit.size) {
-        rabbit.y = groundY - rabbit.size;
-        rabbit.velocityY = 0;
-      }
-      // Rabbit animation toggles every 15 frames.
-      rabbit.animCounter++;
-      if (rabbit.animCounter > 15) {
-        rabbit.animFrame = (rabbit.animFrame + 1) % 2;
-        rabbit.animCounter = 0;
-      }
-
-      // Update clouds.
-      updateClouds();
-      // Update flying objects.
-      updateFlyingObjects();
-
-      // Update falling items.
-      for (let i = items.length - 1; i >= 0; i--) {
-        let item = items[i];
-        item.y += item.speed;
-        // Collision detection.
-        if (
-          item.x < rabbit.x + rabbit.size &&
-          item.x + item.size > rabbit.x &&
-          item.y < rabbit.y + rabbit.size &&
-          item.y + item.size > rabbit.y
-        ) {
-          if (item.type === 'food') {
-            score += 3;  // +3 for catching food
-          } else {
-            score -= 2;  // -2 for hitting an obstacle
-            ouchTimestamp = Date.now();
-          }
-          items.splice(i, 1);
-          if (score <= 0) {
-            score = 0;
-            gameOver = true;
-          }
-        } else if (item.y > gameCanvas.height) {
-          // Deduct 2 points if a food item is missed.
-          if (item.type === 'food') {
-            score -= 2;
-            if (score <= 0) {
-              score = 0;
-              gameOver = true;
-            }
-          }
-          items.splice(i, 1);
-        }
-      }
-
-      // Spawn new items based on difficulty.
-      let spawnInterval = Math.max(30, 90 - Math.floor(difficulty * 10));
-      spawnTimer++;
-      if (spawnTimer > spawnInterval) {
-        spawnItem();
-        spawnTimer = 0;
-      }
-    }
-
-    // Update clouds.
-    function updateClouds() {
-      clouds.forEach(cloud => {
-        cloud.y += cloud.speed;
-        if (cloud.y > bgCanvas.height + 30) {
-          cloud.y = -30;
-          cloud.x = Math.random() * bgCanvas.width;
-        }
-      });
-    }
-
-    // Update flying objects.
-    function updateFlyingObjects() {
-      flyingObjects.forEach(obj => {
-        obj.x -= obj.speed; // move leftward
-        if (obj.x < -50) {
-          obj.x = bgCanvas.width + 50;
-          obj.y = Math.random() * (bgCanvas.height / 3);
-          const objects = ['🛬', '🛫', '🛩️', '🦆', '🪁'];
-          obj.emoji = objects[Math.floor(Math.random() * objects.length)];
-        }
-      });
-    }
-
-    // Draw the parallax background.
-    function drawBackground() {
-      bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
-      // Sky gradient.
-      let gradient = bgCtx.createLinearGradient(0, 0, 0, bgCanvas.height);
-      gradient.addColorStop(0, "#aee");
-      gradient.addColorStop(1, "#ccf");
-      bgCtx.fillStyle = gradient;
-      bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
-
-      // Draw distant hills.
-      let hillHeight = 100;
-      bgCtx.fillStyle = "#8c8";
-      for (let i = -1; i < 2; i++) {
-        bgCtx.beginPath();
-        let startX = i * gameCanvas.width / 2;
-        bgCtx.moveTo(startX, groundY);
-        bgCtx.quadraticCurveTo(
-          startX + gameCanvas.width / 4,
-          groundY - hillHeight,
-          startX + gameCanvas.width / 2,
-          groundY
-        );
-        bgCtx.fill();
-      }
-
-      // Draw drifting clouds.
-      bgCtx.font = "30px sans-serif";
-      clouds.forEach(cloud => {
-        bgCtx.fillText("☁️", cloud.x, cloud.y);
-      });
-
-      // Draw flying objects.
-      bgCtx.font = "30px sans-serif";
-      flyingObjects.forEach(obj => {
-        bgCtx.fillText(obj.emoji, obj.x, obj.y);
-      });
-
-      // Draw ground.
-      bgCtx.fillStyle = "#654321";
-      bgCtx.fillRect(0, groundY, bgCanvas.width, bgCanvas.height - groundY);
-    }
-
-    // Draw game objects and UI.
-    function drawGame() {
-      ctx.clearRect(0, 0, gameCanvas.width, gameCanvas.height);
-
-      // Draw falling items.
-      items.forEach(item => {
-        ctx.font = item.size + "px sans-serif";
-        ctx.fillText(item.emoji, item.x, item.y + item.size);
-      });
-
-      // Draw the animated rabbit.
-      ctx.font = rabbit.size + "px sans-serif";
-      let rabbitEmoji = (rabbit.animFrame === 0) ? "🐰" : "🐇";
-      ctx.fillText(rabbitEmoji, rabbit.x, rabbit.y + rabbit.size);
-
-      // Display "ouch" if recently hit, with fading effect over 1 second.
-      if (ouchTimestamp > 0) {
-        let elapsed = Date.now() - ouchTimestamp;
-        if (elapsed < 1000) {
-          let alpha = 1 - (elapsed / 1000);
-          ctx.save();
-          ctx.globalAlpha = alpha;
-          ctx.font = "20px sans-serif";
-          ctx.fillStyle = "red";
-          ctx.fillText("ouch", rabbit.x, rabbit.y - 10);
-          ctx.restore();
-        } else {
-          ouchTimestamp = 0;
-        }
-      }
-
-      // Show score.
-      ctx.font = "24px sans-serif";
-      ctx.fillStyle = "#000";
-      ctx.fillText("Score: " + score, 10, 30);
-
-      // Pre-game overlay.
-      if (!gameStarted && !gameOver) {
-        ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-        ctx.fillRect(0, 0, gameCanvas.width, gameCanvas.height);
-        ctx.font = "30px sans-serif";
-        ctx.fillStyle = "#fff";
-        ctx.textAlign = "center";
-        ctx.fillText("Tap to start and jump!", gameCanvas.width / 2, gameCanvas.height / 2);
-        ctx.textAlign = "start";
-      }
-
-      // Game Over screen.
-      if (gameOver) {
-        ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-        ctx.fillRect(0, 0, gameCanvas.width, gameCanvas.height);
-        ctx.font = "40px sans-serif";
-        ctx.fillStyle = "#fff";
-        ctx.textAlign = "center";
-        ctx.fillText("Game Over", gameCanvas.width / 2, gameCanvas.height / 2 - 20);
-        ctx.font = "30px sans-serif";
-        ctx.fillText("Tap to Restart", gameCanvas.width / 2, gameCanvas.height / 2 + 20);
-        ctx.textAlign = "start";
-      }
-    }
-
-    // Main game loop.
-    function gameLoop() {
-      update();
-      drawBackground();
-      drawGame();
-      requestAnimationFrame(gameLoop);
-    }
-    gameLoop();
-
-    // On tap/click: jump or restart.
-    function jumpOrRestart() {
-      if (gameOver) {
-        restartGame();
-        return;
-      }
-      if (!gameStarted) {
-        gameStarted = true;
-      }
-      // Jump if the rabbit is on the ground.
-      if (rabbit.y >= groundY - rabbit.size - 1) {
-        rabbit.velocityY = rabbit.jumpForce;
-      }
-    }
-
-    // Reset game state.
-    function restartGame() {
-      score = initialScore;
-      difficulty = 0;
-      gameStarted = false;
-      gameOver = false;
+    // Spawn entities periodically.
+    spawnTimer++;
+    if (spawnTimer > spawnInterval) {
+      spawnEntities();
       spawnTimer = 0;
-      items = [];
-      rabbit.x = gameCanvas.width / 2 - rabbit.size / 2;
-      rabbit.y = groundY - rabbit.size;
-      rabbit.velocityY = 0;
-      ouchTimestamp = 0;
-      bgOffset = 0;
-      initClouds();
-      initFlyingObjects();
     }
 
-    // Listen for tap/click events.
-    gameCanvas.addEventListener("touchstart", function(e) {
-      e.preventDefault();
-      jumpOrRestart();
-    });
-    gameCanvas.addEventListener("mousedown", jumpOrRestart);
-
-    // Allow horizontal movement by dragging.
-    function moveRabbit(e) {
-      let clientX = (e.touches && e.touches.length > 0) ? e.touches[0].clientX : e.clientX;
-      rabbit.x = clientX - rabbit.size / 2;
-      if (rabbit.x < 0) rabbit.x = 0;
-      if (rabbit.x > gameCanvas.width - rabbit.size) rabbit.x = gameCanvas.width - rabbit.size;
+    // Update obstacles.
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+      const obs = obstacles[i];
+      // Remove obstacles that are far behind the bunny.
+      if (obs.position.z > bunny.position.z + 1) {
+        scene.remove(obs);
+        obstacles.splice(i, 1);
+      } else {
+        // Basic collision detection.
+        if (Math.abs(obs.position.x - bunny.position.x) < 0.75 &&
+            Math.abs(obs.position.z - bunny.position.z) < 0.75 &&
+            Math.abs(obs.position.y - bunny.position.y) < 0.75) {
+          // Collision with an obstacle.
+          score -= 2;
+          uiScore.innerText = score;
+          scene.remove(obs);
+          obstacles.splice(i, 1);
+          if (score <= 0) {
+            endGame();
+          }
+        }
+      }
     }
-    gameCanvas.addEventListener("touchmove", function(e) {
-      e.preventDefault();
-      moveRabbit(e);
-    });
-    gameCanvas.addEventListener("mousemove", moveRabbit);
-  </script>
+
+    // Update collectibles.
+    for (let i = collectibles.length - 1; i >= 0; i--) {
+      const col = collectibles[i];
+      if (col.position.z > bunny.position.z + 1) {
+        // Missed collectible: deduct 2 points.
+        score -= 2;
+        uiScore.innerText = score;
+        scene.remove(col);
+        collectibles.splice(i, 1);
+        if (score <= 0) {
+          endGame();
+        }
+      } else {
+        if (Math.abs(col.position.x - bunny.position.x) < 0.75 &&
+            Math.abs(col.position.z - bunny.position.z) < 0.75 &&
+            Math.abs(col.position.y - bunny.position.y) < 0.75) {
+          // Collected!
+          score += 3;
+          uiScore.innerText = score;
+          scene.remove(col);
+          collectibles.splice(i, 1);
+        }
+      }
+    }
+
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  // ====== RESTART HANDLING ======
+  window.addEventListener("keydown", function(e) {
+    if (gameOver) resetGame();
+  });
+  window.addEventListener("touchstart", function(e) {
+    if (gameOver) resetGame();
+  });
+
+  // ====== HANDLE WINDOW RESIZE ======
+  window.addEventListener("resize", function() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+</script>
 </body>
 </html>
