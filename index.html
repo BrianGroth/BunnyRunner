@@ -2,9 +2,13 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>3D Bunny Endless Runner</title>
+  <title>3D Bunny Endless Runner (3D)</title>
   <style>
-    body { margin: 0; overflow: hidden; background: #000; }
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+    }
     #ui {
       position: absolute;
       top: 10px;
@@ -31,25 +35,30 @@
 <body>
 <div id="ui">Score: <span id="score">0</span></div>
 <div id="message">Tap or press any key to start</div>
+
 <!-- Include Three.js from a CDN -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
   // ====== SCENE SETUP ======
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(0xa0a0a0, 50, 200);
 
-  scene.background = new THREE.Color(0xa0a0a0);
+  // Set a bright sky background color
+  scene.background = new THREE.Color(0x87ceeb);
 
+  // Adjust fog so it's less aggressive (sky color, start distance, end distance)
+  scene.fog = new THREE.Fog(0x87ceeb, 80, 400);
 
-  const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-  // We'll update the camera's position relative to the bunny later.
+  const camera = new THREE.PerspectiveCamera(
+    75,
+    window.innerWidth / window.innerHeight,
+    0.1,
+    1000
+  );
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(window.devicePixelRatio);
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
-
-  renderer.setPixelRatio(window.devicePixelRatio);
-
   document.body.appendChild(renderer.domElement);
 
   // ====== LIGHTING & ENVIRONMENT ======
@@ -61,23 +70,23 @@
   directionalLight.castShadow = true;
   scene.add(directionalLight);
 
-  // Ground plane
+  // Create a large ground plane
   const groundGeo = new THREE.PlaneGeometry(1000, 1000);
   const groundMat = new THREE.MeshPhongMaterial({ color: 0x228822 });
   const ground = new THREE.Mesh(groundGeo, groundMat);
-  ground.rotation.x = -Math.PI / 2;
+  ground.rotation.x = -Math.PI / 2; // horizontal
   ground.receiveShadow = true;
   scene.add(ground);
 
   // ====== BUNNY (PLAYER) ======
-  // We represent the bunny as a low-poly box.
+  // Represent the bunny with a simple box, but taller to look more "bunny-like"
   const laneWidth = 2; // distance between lanes
-  const bunnyGeometry = new THREE.BoxGeometry(1, 1, 1.5);
+  const bunnyGeometry = new THREE.BoxGeometry(1, 1.5, 1);
   const bunnyMaterial = new THREE.MeshPhongMaterial({ color: 0xffaa00 });
   const bunny = new THREE.Mesh(bunnyGeometry, bunnyMaterial);
   bunny.castShadow = true;
-  // Initial position: center lane, standing on the ground (y = 0.5 because box height=1)
-  bunny.position.set(0, 0.5, 0);
+  // Start in the center lane, above ground
+  bunny.position.set(0, 0.75, 0);
   scene.add(bunny);
 
   // ====== GAME STATE VARIABLES ======
@@ -90,9 +99,9 @@
   let velocityY = 0;       // vertical velocity for jump
   const gravity = 0.05;
   const jumpForce = 0.8;
-  let canJump = true;      // flag to prevent double jumps
+  let canJump = true;      // to prevent double jumps
 
-  // Arrays for obstacles and collectibles
+  // Obstacles & Collectibles
   const obstacles = [];
   const collectibles = [];
   let spawnTimer = 0;
@@ -104,9 +113,9 @@
 
   // ====== INPUT HANDLING ======
   window.addEventListener("keydown", handleKey);
-  window.addEventListener("touchstart", handleTouchStart);
-  window.addEventListener("touchmove", handleTouchMove);
-  window.addEventListener("touchend", handleTouchEnd);
+  renderer.domElement.addEventListener("touchstart", handleTouchStart, { passive: false });
+  renderer.domElement.addEventListener("touchmove", handleTouchMove, { passive: false });
+  renderer.domElement.addEventListener("touchend", handleTouchEnd, { passive: false });
 
   let touchStartX = null;
   function handleKey(e) {
@@ -120,11 +129,14 @@
       jump();
     }
   }
+
   function handleTouchStart(e) {
+    e.preventDefault();
     if (!gameStarted) startGame();
     touchStartX = e.touches[0].clientX;
   }
   function handleTouchMove(e) {
+    e.preventDefault();
     if (!touchStartX) return;
     let deltaX = e.touches[0].clientX - touchStartX;
     if (Math.abs(deltaX) > 50) {
@@ -138,6 +150,7 @@
     }
   }
   function handleTouchEnd(e) {
+    e.preventDefault();
     if (touchStartX !== null) {
       jump();
       touchStartX = null;
@@ -149,20 +162,23 @@
     gameStarted = true;
     messageDiv.style.display = "none";
   }
+
   function endGame() {
     gameOver = true;
     messageDiv.innerText = "Game Over! Tap or press any key to restart.";
     messageDiv.style.display = "block";
   }
+
   function resetGame() {
-    // Remove all obstacles and collectibles
+    // Remove obstacles and collectibles from scene
     obstacles.forEach(obj => scene.remove(obj));
     obstacles.length = 0;
     collectibles.forEach(obj => scene.remove(obj));
     collectibles.length = 0;
+
     score = 0;
     uiScore.innerText = score;
-    bunny.position.set(0, 0.5, 0);
+    bunny.position.set(0, 0.75, 0);
     targetLane = 0;
     velocityY = 0;
     forwardSpeed = 0.2;
@@ -180,15 +196,16 @@
   }
 
   // ====== SPAWN OBSTACLES & COLLECTIBLES ======
-  // Obstacles are represented as red boxes; collectibles as green spheres.
   function spawnEntities() {
-    const isCollectible = Math.random() < 0.6; // 60% chance to spawn a collectible
+    const isCollectible = Math.random() < 0.6; // 60% chance collectible
     const lanes = [-1, 0, 1];
     const lane = lanes[Math.floor(Math.random() * lanes.length)];
     const xPos = lane * laneWidth;
-    const zPos = bunny.position.z - 50; // spawn well ahead of the bunny
+    const zPos = bunny.position.z - 50; // spawn ahead of the bunny
+
     if (isCollectible) {
-      const geometry = new THREE.SphereGeometry(0.5, 8, 8);
+      // Green sphere
+      const geometry = new THREE.SphereGeometry(0.4, 8, 8);
       const material = new THREE.MeshPhongMaterial({ color: 0x00ff00 });
       const collectible = new THREE.Mesh(geometry, material);
       collectible.castShadow = true;
@@ -196,6 +213,7 @@
       scene.add(collectible);
       collectibles.push(collectible);
     } else {
+      // Red box
       const geometry = new THREE.BoxGeometry(1, 1, 1);
       const material = new THREE.MeshPhongMaterial({ color: 0xff0000 });
       const obstacle = new THREE.Mesh(geometry, material);
@@ -209,6 +227,7 @@
   // ====== MAIN GAME LOOP ======
   function animate() {
     requestAnimationFrame(animate);
+
     if (!gameStarted) {
       renderer.render(scene, camera);
       return;
@@ -218,80 +237,82 @@
       return;
     }
 
-    // Gradually increase difficulty and forward speed.
+    // Increase difficulty & speed gradually
     difficulty += 0.001;
     forwardSpeed += 0.0001;
 
-    // Smoothly update bunny's lane position.
+    // Smoothly update bunny's lane position
     const desiredX = targetLane * laneWidth;
     bunny.position.x += (desiredX - bunny.position.x) * 0.2;
 
-    // Bunny jump physics.
+    // Jump physics
     bunny.position.y += velocityY;
     velocityY -= gravity;
-    if (bunny.position.y <= 0.5) {
-      bunny.position.y = 0.5;
+    if (bunny.position.y <= 0.75) {
+      bunny.position.y = 0.75;
       velocityY = 0;
       canJump = true;
     }
 
-    // Move bunny forward (along negative Z axis).
+    // Move bunny forward (negative Z)
     bunny.position.z -= forwardSpeed;
 
-    // Update camera to follow the bunny (positioned behind and above).
+    // Reposition camera behind and above the bunny
     camera.position.x = bunny.position.x;
-    camera.position.z = bunny.position.z + 10;
-    camera.position.y = bunny.position.y + 5;
-    camera.lookAt(bunny.position);
+    camera.position.y = bunny.position.y + 4;   // a bit higher
+    camera.position.z = bunny.position.z + 10;  // behind
+    // Look slightly ahead of the bunny to see more track
+    camera.lookAt(bunny.position.x, bunny.position.y, bunny.position.z - 10);
 
-    // Spawn entities periodically.
+    // Spawn entities periodically
     spawnTimer++;
     if (spawnTimer > spawnInterval) {
       spawnEntities();
       spawnTimer = 0;
     }
 
-    // Update obstacles.
+    // Update obstacles
     for (let i = obstacles.length - 1; i >= 0; i--) {
       const obs = obstacles[i];
-      // Remove obstacles that are far behind the bunny.
-      if (obs.position.z > bunny.position.z + 1) {
+      // Remove obstacles behind bunny
+      if (obs.position.z > bunny.position.z + 2) {
         scene.remove(obs);
         obstacles.splice(i, 1);
       } else {
-        // Basic collision detection.
-        if (Math.abs(obs.position.x - bunny.position.x) < 0.75 &&
-            Math.abs(obs.position.z - bunny.position.z) < 0.75 &&
-            Math.abs(obs.position.y - bunny.position.y) < 0.75) {
-          // Collision with an obstacle.
+        // Collision detection
+        if (
+          Math.abs(obs.position.x - bunny.position.x) < 0.7 &&
+          Math.abs(obs.position.z - bunny.position.z) < 0.7 &&
+          Math.abs(obs.position.y - bunny.position.y) < 1.0
+        ) {
+          // Hit obstacle
           score -= 2;
           uiScore.innerText = score;
           scene.remove(obs);
           obstacles.splice(i, 1);
-          if (score <= 0) {
-            endGame();
-          }
+          if (score <= 0) endGame();
         }
       }
     }
 
-    // Update collectibles.
+    // Update collectibles
     for (let i = collectibles.length - 1; i >= 0; i--) {
       const col = collectibles[i];
-      if (col.position.z > bunny.position.z + 1) {
-        // Missed collectible: deduct 2 points.
+      if (col.position.z > bunny.position.z + 2) {
+        // Missed collectible
         score -= 2;
         uiScore.innerText = score;
         scene.remove(col);
         collectibles.splice(i, 1);
-        if (score <= 0) {
-          endGame();
-        }
+        if (score <= 0) endGame();
       } else {
-        if (Math.abs(col.position.x - bunny.position.x) < 0.75 &&
-            Math.abs(col.position.z - bunny.position.z) < 0.75 &&
-            Math.abs(col.position.y - bunny.position.y) < 0.75) {
-          // Collected!
+        // Check if collected
+        if (
+          Math.abs(col.position.x - bunny.position.x) < 0.7 &&
+          Math.abs(col.position.z - bunny.position.z) < 0.7 &&
+          Math.abs(col.position.y - bunny.position.y) < 1.0
+        ) {
+          // Collected
           score += 3;
           uiScore.innerText = score;
           scene.remove(col);
@@ -309,7 +330,10 @@
     if (gameOver) resetGame();
   });
   window.addEventListener("touchstart", function(e) {
-    if (gameOver) resetGame();
+    if (gameOver) {
+      e.preventDefault();
+      resetGame();
+    }
   });
 
   // ====== HANDLE WINDOW RESIZE ======
