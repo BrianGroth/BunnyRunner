@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Endless Runner: Rabbit Emoji Adventure - Vertical</title>
+  <title>Endless Runner: Rabbit Emoji Adventure - Enhanced Scoring & Flying Objects</title>
   <style>
     body, html {
       margin: 0;
@@ -19,7 +19,7 @@
   </style>
 </head>
 <body>
-  <!-- Background canvas: sky, clouds, and parallax hills -->
+  <!-- Background canvas: sky, clouds, flying objects, and parallax hills -->
   <canvas id="bgCanvas"></canvas>
   <!-- Game canvas: rabbit, falling items, and UI -->
   <canvas id="gameCanvas"></canvas>
@@ -34,19 +34,19 @@
     // Global game state.
     let initialScore = 10;
     let score = initialScore;
-    let difficulty = 0; // gradually increases falling speed
+    let difficulty = 0; // increases falling speed gradually
     let gameStarted = false;
     let gameOver = false;
     let spawnTimer = 0;
     let outchTimer = 0; // frames to show "outch" when hit
-    let bgOffset = 0; // used for parallax scrolling
+    let bgOffset = 0; // for parallax effects
 
     // Dimensions and ground.
     let groundY;
     const rabbitSize = 50;
     let rabbit = {
-      x: 0, // set in resize() to horizontal center
-      y: 0, // set in resize() so that it rests on the ground
+      x: 0, // will be centered in resize()
+      y: 0, // will be set in resize() to rest on the ground
       size: rabbitSize,
       velocityY: 0,
       jumpForce: -12,
@@ -69,6 +69,21 @@
       }
     }
 
+    // Flying objects in the sky.
+    let flyingObjects = [];
+    function initFlyingObjects() {
+      flyingObjects = [];
+      // Spawn 3 flying objects.
+      for (let i = 0; i < 3; i++) {
+        let x = Math.random() * bgCanvas.width;
+        let y = Math.random() * (bgCanvas.height / 3); // upper third
+        let speed = 1 + Math.random() * 2; // speed between 1 and 3
+        const objects = ['✈️', '🐦', '🎈'];
+        let emoji = objects[Math.floor(Math.random() * objects.length)];
+        flyingObjects.push({ x, y, speed, emoji });
+      }
+    }
+
     // Resize canvases and reposition elements.
     function resize() {
       bgCanvas.width = window.innerWidth;
@@ -76,10 +91,11 @@
       gameCanvas.width = window.innerWidth;
       gameCanvas.height = window.innerHeight;
       groundY = gameCanvas.height - 50;
-      // Position rabbit in the center-bottom.
+      // Center the rabbit at the bottom.
       rabbit.x = gameCanvas.width / 2 - rabbit.size / 2;
       rabbit.y = groundY - rabbit.size;
       initClouds();
+      initFlyingObjects();
     }
     window.addEventListener("resize", resize);
     resize();
@@ -95,8 +111,8 @@
         const obstacles = ['🌳', '🪨'];
         emoji = obstacles[Math.floor(Math.random() * obstacles.length)];
       }
-      let x = Math.random() * (gameCanvas.width - 40); // random x position
-      let y = -40; // spawn just above the top
+      let x = Math.random() * (gameCanvas.width - 40);
+      let y = -40; // just above the top
       let size = 40;
       let baseSpeed = 3;
       let speed = baseSpeed + difficulty;
@@ -107,8 +123,9 @@
     function update() {
       if (gameOver) {
         if (outchTimer > 0) outchTimer--;
-        // Keep background scrolling.
         bgOffset += 1;
+        updateFlyingObjects();
+        updateClouds();
         return;
       }
 
@@ -116,7 +133,7 @@
         difficulty += 0.005; // gradually increase difficulty
       }
 
-      bgOffset += 1; // update background offset for parallax
+      bgOffset += 1;
 
       // Update rabbit physics.
       rabbit.velocityY += rabbit.gravity;
@@ -125,21 +142,17 @@
         rabbit.y = groundY - rabbit.size;
         rabbit.velocityY = 0;
       }
-      // Rabbit animation: toggle every 15 frames.
+      // Rabbit animation toggles every 15 frames.
       rabbit.animCounter++;
       if (rabbit.animCounter > 15) {
         rabbit.animFrame = (rabbit.animFrame + 1) % 2;
         rabbit.animCounter = 0;
       }
 
-      // Update clouds (drifting downward).
-      clouds.forEach(cloud => {
-        cloud.y += cloud.speed;
-        if (cloud.y > bgCanvas.height + 30) {
-          cloud.y = -30;
-          cloud.x = Math.random() * bgCanvas.width;
-        }
-      });
+      // Update clouds.
+      updateClouds();
+      // Update flying objects.
+      updateFlyingObjects();
 
       // Update falling items.
       for (let i = items.length - 1; i >= 0; i--) {
@@ -153,9 +166,9 @@
           item.y + item.size > rabbit.y
         ) {
           if (item.type === 'food') {
-            score += 1;
+            score += 3;  // +3 for catching food
           } else {
-            score -= 1;
+            score -= 2;  // -2 for hitting an obstacle
             outchTimer = 30;
           }
           items.splice(i, 1);
@@ -164,6 +177,14 @@
             gameOver = true;
           }
         } else if (item.y > gameCanvas.height) {
+          // If a food item is missed, subtract 1 point.
+          if (item.type === 'food') {
+            score -= 1;
+            if (score <= 0) {
+              score = 0;
+              gameOver = true;
+            }
+          }
           items.splice(i, 1);
         }
       }
@@ -177,6 +198,30 @@
       }
     }
 
+    // Update clouds.
+    function updateClouds() {
+      clouds.forEach(cloud => {
+        cloud.y += cloud.speed;
+        if (cloud.y > bgCanvas.height + 30) {
+          cloud.y = -30;
+          cloud.x = Math.random() * bgCanvas.width;
+        }
+      });
+    }
+
+    // Update flying objects.
+    function updateFlyingObjects() {
+      flyingObjects.forEach(obj => {
+        obj.x -= obj.speed; // move leftward
+        if (obj.x < -50) {
+          obj.x = bgCanvas.width + 50;
+          obj.y = Math.random() * (bgCanvas.height / 3);
+          const objects = ['✈️', '🐦', '🎈'];
+          obj.emoji = objects[Math.floor(Math.random() * objects.length)];
+        }
+      });
+    }
+
     // Draw the parallax background.
     function drawBackground() {
       bgCtx.clearRect(0, 0, bgCanvas.width, bgCanvas.height);
@@ -187,10 +232,9 @@
       bgCtx.fillStyle = gradient;
       bgCtx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
 
-      // Draw distant hills (parallax layer).
+      // Draw distant hills.
       let hillHeight = 100;
       bgCtx.fillStyle = "#8c8";
-      // Draw hills across the width.
       for (let i = -1; i < 2; i++) {
         bgCtx.beginPath();
         let startX = i * gameCanvas.width / 2;
@@ -208,6 +252,12 @@
       bgCtx.font = "30px sans-serif";
       clouds.forEach(cloud => {
         bgCtx.fillText("☁️", cloud.x, cloud.y);
+      });
+
+      // Draw flying objects.
+      bgCtx.font = "30px sans-serif";
+      flyingObjects.forEach(obj => {
+        bgCtx.fillText(obj.emoji, obj.x, obj.y);
       });
 
       // Draw ground.
@@ -230,7 +280,7 @@
       let rabbitEmoji = (rabbit.animFrame === 0) ? "🐰" : "🐇";
       ctx.fillText(rabbitEmoji, rabbit.x, rabbit.y + rabbit.size);
 
-      // Display "outch" if recently hit.
+      // Display "outch" when hit.
       if (outchTimer > 0) {
         ctx.font = "20px sans-serif";
         ctx.fillStyle = "red";
@@ -242,7 +292,7 @@
       ctx.fillStyle = "#000";
       ctx.fillText("Score: " + score, 10, 30);
 
-      // Pre-game instructions overlay.
+      // Pre-game overlay.
       if (!gameStarted && !gameOver) {
         ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
         ctx.fillRect(0, 0, gameCanvas.width, gameCanvas.height);
@@ -285,7 +335,7 @@
       if (!gameStarted) {
         gameStarted = true;
       }
-      // Jump if on ground.
+      // Jump if the rabbit is on the ground.
       if (rabbit.y >= groundY - rabbit.size - 1) {
         rabbit.velocityY = rabbit.jumpForce;
       }
@@ -305,6 +355,7 @@
       outchTimer = 0;
       bgOffset = 0;
       initClouds();
+      initFlyingObjects();
     }
 
     // Listen for tap/click events.
@@ -318,7 +369,6 @@
     function moveRabbit(e) {
       let clientX = (e.touches && e.touches.length > 0) ? e.touches[0].clientX : e.clientX;
       rabbit.x = clientX - rabbit.size / 2;
-      // Constrain within canvas.
       if (rabbit.x < 0) rabbit.x = 0;
       if (rabbit.x > gameCanvas.width - rabbit.size) rabbit.x = gameCanvas.width - rabbit.size;
     }
