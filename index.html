@@ -38,8 +38,8 @@
     let gameStarted = false;
     let gameOver = false;
     let spawnTimer = 0;
-    let outchTimer = 0; // frames to show "outch" when hit
     let bgOffset = 0; // for parallax effects
+    let ouchTimestamp = 0; // time when "ouch" was triggered
 
     // Dimensions and ground.
     let groundY;
@@ -73,12 +73,13 @@
     let flyingObjects = [];
     function initFlyingObjects() {
       flyingObjects = [];
+      // Use the requested flying emojis.
+      const objects = ['🛬', '🛫', '🛩️', '🦆', '🪁'];
       // Spawn 3 flying objects.
       for (let i = 0; i < 3; i++) {
         let x = Math.random() * bgCanvas.width;
         let y = Math.random() * (bgCanvas.height / 3); // upper third
         let speed = 1 + Math.random() * 2; // speed between 1 and 3
-        const objects = ['✈️', '🐦', '🎈'];
         let emoji = objects[Math.floor(Math.random() * objects.length)];
         flyingObjects.push({ x, y, speed, emoji });
       }
@@ -122,7 +123,6 @@
     // Update game state.
     function update() {
       if (gameOver) {
-        if (outchTimer > 0) outchTimer--;
         bgOffset += 1;
         updateFlyingObjects();
         updateClouds();
@@ -169,7 +169,7 @@
             score += 3;  // +3 for catching food
           } else {
             score -= 2;  // -2 for hitting an obstacle
-            outchTimer = 30;
+            ouchTimestamp = Date.now();
           }
           items.splice(i, 1);
           if (score <= 0) {
@@ -177,9 +177,9 @@
             gameOver = true;
           }
         } else if (item.y > gameCanvas.height) {
-          // If a food item is missed, subtract 1 point.
+          // Deduct 2 points if a food item is missed.
           if (item.type === 'food') {
-            score -= 1;
+            score -= 2;
             if (score <= 0) {
               score = 0;
               gameOver = true;
@@ -216,7 +216,7 @@
         if (obj.x < -50) {
           obj.x = bgCanvas.width + 50;
           obj.y = Math.random() * (bgCanvas.height / 3);
-          const objects = ['✈️', '🐦', '🎈'];
+          const objects = ['🛬', '🛫', '🛩️', '🦆', '🪁'];
           obj.emoji = objects[Math.floor(Math.random() * objects.length)];
         }
       });
@@ -280,11 +280,20 @@
       let rabbitEmoji = (rabbit.animFrame === 0) ? "🐰" : "🐇";
       ctx.fillText(rabbitEmoji, rabbit.x, rabbit.y + rabbit.size);
 
-      // Display "outch" when hit.
-      if (outchTimer > 0) {
-        ctx.font = "20px sans-serif";
-        ctx.fillStyle = "red";
-        ctx.fillText("outch", rabbit.x, rabbit.y - 10);
+      // Display "ouch" if recently hit, with fading effect over 1 second.
+      if (ouchTimestamp > 0) {
+        let elapsed = Date.now() - ouchTimestamp;
+        if (elapsed < 1000) {
+          let alpha = 1 - (elapsed / 1000);
+          ctx.save();
+          ctx.globalAlpha = alpha;
+          ctx.font = "20px sans-serif";
+          ctx.fillStyle = "red";
+          ctx.fillText("ouch", rabbit.x, rabbit.y - 10);
+          ctx.restore();
+        } else {
+          ouchTimestamp = 0;
+        }
       }
 
       // Show score.
@@ -352,7 +361,7 @@
       rabbit.x = gameCanvas.width / 2 - rabbit.size / 2;
       rabbit.y = groundY - rabbit.size;
       rabbit.velocityY = 0;
-      outchTimer = 0;
+      ouchTimestamp = 0;
       bgOffset = 0;
       initClouds();
       initFlyingObjects();
