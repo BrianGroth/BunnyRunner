@@ -32,7 +32,7 @@
     const gameCanvas = document.getElementById("gameCanvas");
     const ctx = gameCanvas.getContext("2d");
 
-    // Game settings and state.
+    // Global game state and settings.
     let initialScore = 10;
     let score = initialScore;
     let difficulty = 0;  // increases over time
@@ -40,26 +40,13 @@
     let gameOver = false;
     let spawnTimer = 0;
     let outchTimer = 0;  // timer to display "outch" when hit
-
-    // Setup canvas sizes.
-    let groundY;
-    function resize() {
-      bgCanvas.width = window.innerWidth;
-      bgCanvas.height = window.innerHeight;
-      gameCanvas.width = window.innerWidth;
-      gameCanvas.height = window.innerHeight;
-      groundY = gameCanvas.height - 50;
-      rabbit.y = groundY - rabbit.size;
-      initClouds(); // reset clouds on resize
-    }
-    window.addEventListener("resize", resize);
-    resize();
+    let groundY; // y-coordinate for the ground
 
     // Define the rabbit character.
     const rabbitSize = 50;
     let rabbit = {
       x: 50,
-      y: groundY - rabbitSize,
+      y: 0, // will be set in resize()
       size: rabbitSize,
       velocityY: 0,
       jumpForce: -12,
@@ -80,7 +67,21 @@
         clouds.push({ x, y, speed });
       }
     }
-    initClouds();
+
+    // Setup canvas sizes.
+    function resize() {
+      bgCanvas.width = window.innerWidth;
+      bgCanvas.height = window.innerHeight;
+      gameCanvas.width = window.innerWidth;
+      gameCanvas.height = window.innerHeight;
+      groundY = gameCanvas.height - 50;
+      // Update rabbit's y position based on ground level.
+      rabbit.y = groundY - rabbit.size;
+      initClouds(); // reset clouds on resize
+    }
+    window.addEventListener("resize", resize);
+    // Call resize AFTER rabbit and initClouds are defined.
+    resize();
 
     // Spawn a food or obstacle item.
     function spawnItem() {
